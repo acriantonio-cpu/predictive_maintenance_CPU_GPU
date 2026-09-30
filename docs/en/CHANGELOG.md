@@ -48,3 +48,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); semantic versi
   parser fuzzing.
 - Documentation: step-by-step guide, methodology, validation protocol, sensor matrix, threat model,
   security, governance, AI use.
+
+### Fixed
+- GUI: charts showed only `gpu0` and a single case fan; now one series per detected GPU and
+  fan, GPU fan also in % (cards without rpm), KPIs with several GPUs. The report shows a tile
+  for every GPU.
+- Missing sources (LibreHardwareMonitor not running, `nvidia-ml-py`/pywin32 not bundled in
+  the exe) are now reported in the GUI (banner + “Detect sensors”) and by `hwdrift discover`;
+  `build_exe.ps1` installs and checks the optional modules before PyInstaller.
+- Status and hypotheses / Charts: with no data the panel explains what is missing; manual
+  user hypotheses (never closed by the analysis); the YAML editor starts from the example
+  configuration.
+

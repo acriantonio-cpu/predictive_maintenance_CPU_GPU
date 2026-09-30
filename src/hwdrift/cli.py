@@ -148,7 +148,9 @@ def discover(
     import time
 
     from .collectors.base import CollectorUnavailable, build_collectors
+    from .gui.data import optional_modules_report
 
+    typer.echo("\n".join(optional_modules_report()))
     collectors = build_collectors(state.cfg)
     mapping: dict[str, str] = {}
     for c in collectors:

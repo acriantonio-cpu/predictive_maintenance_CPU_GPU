@@ -304,12 +304,23 @@ qui sotto i nomi delle schede e dei pulsanti sono quelli italiani; in inglese co
 
 | Scheda | Cosa offre |
 |---|---|
-| **Tempo reale** | sei valori grandi (temperature, potenze, ventole) e otto grafici che scorrono ogni secondo: temperatura CPU e GPU, potenze, ventole, carico, clock, throttling. Finestra da 5 a 60 minuti. Avviso rosso se un episodio di throttling o una ventola ferma è in corso. All'apertura i grafici si riempiono con la storia recente del database |
-| **Stato e ipotesi** | il semaforo per CPU, GPU, raffreddamento e dischi; allarmi attivi; ipotesi con segnali a supporto/contrari e verifiche. Pulsanti **Analizza ora** (in background, rigenera il report) e **Apri il report HTML** |
-| **Carte di controllo** | sceglie una carta e mostra la carta I e quella dei range mobili con limiti, Fase I, segnali (triangoli) e manutenzioni |
+| **Tempo reale** | sei valori grandi (temperature, potenze, ventole; con più GPU i valori sono separati da « / ») e nove grafici che scorrono ogni secondo: temperatura CPU e GPU, potenze, ventole (CPU, tutte quelle del case, tutte le GPU), ventola GPU in %, carico, clock, throttling. **Tutte le GPU** rilevate hanno una serie propria (GPU0, GPU1…). Un banner arancio elenca le sorgenti non disponibili con il rimedio, e **Rileva sensori** mostra cosa vede HWDrift (moduli opzionali inclusi, sorgenti, sensori) e lo salva su file. Finestra da 5 a 60 minuti. Avviso rosso se un episodio di throttling o una ventola ferma è in corso. All'apertura i grafici si riempiono con la storia recente del database |
+| **Stato e ipotesi** | il semaforo per CPU, GPU, raffreddamento e dischi; allarmi attivi; ipotesi con segnali a supporto/contrari e verifiche. Se non ce ne sono, il riquadro spiega *perché* (ore di dati, canali mancanti, finestre stazionarie) invece di restare vuoto; sotto puoi **aggiungere una tua ipotesi** (titolo, confidenza, evidenze, verifiche): resta attiva finché non la chiudi e l'analisi automatica non la tocca. Pulsanti **Analizza ora** (in background, rigenera il report) e **Apri il report HTML** |
+| **Carte di controllo** | sceglie una carta e mostra la carta I e quella dei range mobili con limiti, Fase I, segnali (triangoli) e manutenzioni. Senza carte spiega cosa manca (vedi «Nessun grafico o sensore mancante» sotto) |
 | **Eventi e manutenzioni** | elenco degli eventi e modulo per registrare pulizie, ripaste, cambi ventola, profili |
-| **Configurazione** | modulo con le impostazioni principali (intervallo, sorgenti, riferimento, limiti, regimi, notifiche, game-safe) e, nella scheda *YAML avanzato*, il file completo. Ogni salvataggio viene **validato**: una configurazione non valida non sostituisce mai quella buona, e resta una copia `.bak`. I commenti del file si perdono se si salva dal modulo |
+| **Configurazione** | modulo con le impostazioni principali (intervallo, sorgenti, riferimento, limiti, regimi, notifiche, game-safe) e, nella scheda *YAML avanzato*, il file completo (se non esiste ancora, l'editor si apre con la configurazione di esempio: modificala e premi *Valida e salva*). Ogni salvataggio viene **validato**: una configurazione non valida non sostituisce mai quella buona, e resta una copia `.bak`. I commenti del file si perdono se si salva dal modulo |
 | **Log e dati** | log in tempo reale; **Salva log…**, **Pacchetto diagnostico (.zip)** (log, stato, configurazione, versioni; *non* il database), **Salva report HTML…**, **Esporta i dati** (CSV, JSONL, Parquet, Prometheus, OTLP; anonimo per default), **Apri cartella dati** |
+
+**Sensori mancanti (CPU, ventole, seconda GPU).** HWDrift non legge i sensori da solo:
+- temperatura e potenza CPU, ventola CPU, ventole del case e scheda madre arrivano **solo** da
+  LibreHardwareMonitor (vedi il passo 1): deve essere in esecuzione, **come amministratore**, con
+  *Options → Remote Web Server* attivo (porta 8085). Senza, il banner arancio lo segnala e non ci
+  sono né carte né ipotesi (l'indicatore principale è la resistenza termica, che richiede
+  temperatura *e* potenza);
+- le GPU NVIDIA si leggono con `nvidia-ml-py` (incluso nell'exe ufficiale; se compili tu, lo
+  script `packaging\build_exe.ps1` lo installa prima di PyInstaller). Tutte le GPU sono lette
+  (`gpu0`, `gpu1`…), analizzate separatamente e mostrate nei grafici e nel report;
+- dal terminale: `hwdrift discover` (o `python -m hwdrift discover`) elenca moduli e sensori.
 
 **Barra in alto.**
 - **▶ Avvia collector**: lo avvia senza privilegi elevati (alcuni sensori a basso livello

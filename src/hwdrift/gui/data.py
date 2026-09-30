@@ -3,9 +3,11 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import platform
+import re
 import sqlite3
 import subprocess
 import sys
@@ -13,6 +15,7 @@ import tempfile
 import time
 import zipfile
 from collections import deque
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -34,8 +37,8 @@ LIVE_CHARTS: list[tuple[str, str, list[tuple[str, str]]]] = [
     ("GPU: potenza", "W", [("gpu0.power_w", "scheda")]),
     ("Ventole", "rpm", [("cpu.fan_rpm", "CPU"), ("chassis.fan1_rpm", "case"),
                         ("gpu0.fan_rpm", "GPU")]),
-    ("Carico", "%", [("cpu.load_pct", "CPU"), ("gpu0.util_pct", "GPU"),
-                     ("gpu0.fan_pct", "ventola GPU")]),
+    ("Ventola GPU (% del massimo)", "%", [("gpu0.fan_pct", "ventola GPU")]),
+    ("Carico", "%", [("cpu.load_pct", "CPU"), ("gpu0.util_pct", "GPU")]),
     ("Clock", "MHz", [("cpu.clock_eff_mhz", "CPU effettivo"), ("gpu0.clock_mhz", "GPU")]),
     ("Throttling (1 = attivo)", "", [("cpu.throttle_thermal", "CPU termico"),
                                      ("gpu0.throttle_thermal", "GPU termico"),
@@ -45,6 +48,67 @@ KPI = [("CPU temperatura", "cpu.pkg.temp_c", "°C"), ("CPU potenza", "cpu.pkg.po
        ("GPU temperatura", "gpu0.temp_edge_c", "°C"), ("GPU potenza", "gpu0.power_w", "W"),
        ("Ventola CPU", "cpu.fan_rpm", "rpm"), ("Ventola GPU", "gpu0.fan_rpm", "rpm")]
 ALL_LIVE_CHANNELS = sorted({ch for _, _, ser in LIVE_CHARTS for ch, _ in ser})
+
+_GPU_CH = re.compile(r"^gpu(\d+)\.(.+)$")
+_FAN_CH = re.compile(r"^chassis\.fan(\d+)_rpm$")
+
+
+def is_live_channel(name: str) -> bool:
+    """Canale mostrato nei grafici live (anche per GPU e ventole oltre la prima)."""
+    m = _GPU_CH.match(name)
+    return (name in ALL_LIVE_CHANNELS or bool(_FAN_CH.match(name))
+            or (m is not None and f"gpu0.{m.group(2)}" in ALL_LIVE_CHANNELS))
+
+
+def gpu_indices(channels: Iterable[str]) -> list[int]:
+    """Indici delle GPU presenti nei canali (sempre almeno la 0)."""
+    found = {int(m.group(1)) for c in channels if (m := _GPU_CH.match(c))}
+    return sorted(found | {0})
+
+
+def fan_indices(channels: Iterable[str]) -> list[int]:
+    found = {int(m.group(1)) for c in channels if (m := _FAN_CH.match(c))}
+    return sorted(found | {1})
+
+
+def expand_channel(ch: str, label: str, channels: Iterable[str]) -> list[tuple[str, str]]:
+    """``gpu0.x`` -> una serie per GPU; ``chassis.fan1_rpm`` -> una per ventola del case."""
+    chs = list(channels)
+    if (m := _GPU_CH.match(ch)) and m.group(1) == "0":
+        idx = gpu_indices(chs)
+        if len(idx) == 1:
+            return [(ch, tr(label))]
+        return [(f"gpu{i}.{m.group(2)}", f"GPU{i} {tr(label)}".replace(f"GPU{i} GPU", f"GPU{i}"))
+                for i in idx]
+    if ch == "chassis.fan1_rpm":
+        idx = fan_indices(chs)
+        return [(f"chassis.fan{i}_rpm", f"{tr(label)} {i}") for i in idx]
+    return [(ch, tr(label))]
+
+
+def expand_charts(channels: Iterable[str]) -> list[tuple[str, str, list[tuple[str, str]]]]:
+    """``LIVE_CHARTS`` con le serie moltiplicate per GPU e ventole effettivamente presenti.
+    Le etichette sono già tradotte."""
+    chs = list(channels)
+    return [(title, unit, [p for ch, lb in ser for p in expand_channel(ch, lb, chs)])
+            for title, unit, ser in LIVE_CHARTS]
+
+
+def kpi_text(ch: str, latest: Callable[[str], float | None], channels: Iterable[str],
+             unit: str) -> tuple[str, str]:
+    """Valore da mostrare in una scheda KPI: più GPU -> ``a / b``; ventola GPU: rpm, o % se
+    la scheda espone solo il duty."""
+    chs = list(channels)
+    cands = [ch]
+    if ch.endswith(".fan_rpm") and ch.startswith("gpu"):
+        cands.append(ch.replace("fan_rpm", "fan_pct"))
+    for cand in cands:
+        vals = [latest(c) for c, _ in expand_channel(cand, "", chs)]
+        if any(v is not None for v in vals):
+            txt = " / ".join("—" if v is None else f"{v:.0f}" if abs(v) >= 100 else f"{v:.1f}"
+                             for v in vals)
+            return txt, "%" if cand.endswith("fan_pct") else unit
+    return "—", unit
 
 
 def read_live(path: Path, max_age_s: float = 5.0) -> tuple[int, dict[str, float]] | None:
@@ -63,6 +127,103 @@ def read_live(path: Path, max_age_s: float = 5.0) -> tuple[int, dict[str, float]
             return None
         return ts, {k: float(v) for k, v in vals.items() if isinstance(v, (int, float))}
     return None
+
+
+def read_sources(path: Path) -> dict[str, dict[str, Any]]:
+    """Stato delle sorgenti (``{nome: {ok, error}}``) pubblicato dal collector in ``live.json``."""
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8")).get("sources", {})
+    except (OSError, ValueError, AttributeError):
+        return {}
+    return raw if isinstance(raw, dict) else {}
+
+
+SOURCE_HINTS = {
+    "lhm": "Temperatura e potenza della CPU, ventole CPU/case e sensori della scheda madre "
+           "arrivano da LibreHardwareMonitor: avvialo come amministratore e attiva Options > "
+           "Remote Web Server (porta 8085).",
+    "nvml": "Le GPU NVIDIA (temperatura, potenza, ventola, throttling) si leggono con il "
+            "pacchetto nvidia-ml-py: va incluso nell'exe (installa l'extra [windows] prima di "
+            "compilare) e serve il driver NVIDIA.",
+    "perfcounters": "I contatori di Windows richiedono pywin32 (extra [windows]).",
+    "eventlog": "Il registro eventi di Windows richiede pywin32 (extra [windows]).",
+}
+
+
+def sources_problems(sources: dict[str, dict[str, Any]]) -> list[str]:
+    """Righe (già tradotte) per le sorgenti non disponibili, con il rimedio."""
+    out = []
+    for name, st in sorted(sources.items()):
+        if not isinstance(st, dict) or st.get("ok"):
+            continue
+        err = str(st.get("error") or "").strip()
+        line = f"{name}: {err}" if err else tr("{name}: non disponibile").format(name=name)
+        hint = SOURCE_HINTS.get(name)
+        out.append(line + (f"\n    → {tr(hint)}" if hint else ""))
+    return out
+
+
+OPTIONAL_MODULES = (
+    ("pynvml", "nvidia-ml-py: GPU NVIDIA"), ("win32pdh", "pywin32: contatori Windows"),
+    ("win32evtlog", "pywin32: registro eventi"), ("clr", "pythonnet: LHM in modalità dll"),
+    ("numpy", "analisi"), ("scipy", "analisi"),
+)
+
+
+def optional_modules_report() -> list[str]:
+    """Quali moduli opzionali sono importabili (nell'exe: quali sono stati inclusi)."""
+    import importlib
+
+    lines = [tr("Moduli opzionali ({kind}):").format(
+        kind=tr("exe") if getattr(sys, "frozen", False) else "python")]
+    for mod, what in OPTIONAL_MODULES:
+        try:
+            importlib.import_module(mod)
+            lines.append(f"   {mod:<12} OK        {what}")
+        except Exception as exc:
+            lines.append(f"   {mod:<12} {tr('MANCANTE'):<9} {what} ({type(exc).__name__})")
+    return lines
+
+
+def discover_report(cfg: dict[str, Any]) -> str:
+    """Come ``hwdrift discover``: elenca sorgenti e sensori trovati (per la diagnosi sul PC
+    dell'utente). Può richiedere qualche secondo; eseguirlo fuori dal thread della GUI."""
+    from ..collectors.base import CollectorUnavailable, build_collectors
+
+    lines = [f"HWDrift {__version__} · Python {platform.python_version()} · "
+             f"{platform.platform()}"]
+    lines += ["", *optional_modules_report()]
+    try:
+        collectors = build_collectors(cfg)
+    except Exception as exc:
+        return "\n".join([*lines, f"build_collectors: {exc!r}"])
+    for c in collectors:
+        lines.append("")
+        lines.append(f"== {c.name}" + (tr(" (richiede privilegi elevati)") if c.needs_admin
+                                        else ""))
+        try:
+            c.start()
+            samples = c.poll(now_ms(), time.monotonic())
+        except CollectorUnavailable as exc:
+            lines.append(tr("   non disponibile: {err}").format(err=exc))
+            hint = SOURCE_HINTS.get(c.name)
+            if hint:
+                lines.append(f"   → {tr(hint)}")
+            continue
+        except Exception as exc:
+            lines.append(f"   {tr('errore')}: {exc!r}")
+            continue
+        finally:
+            with contextlib.suppress(Exception):
+                c.close()
+        if not samples:
+            lines.append(tr("   nessun sensore (sorgente di eventi o dati non ancora "
+                            "disponibili)"))
+        for smp in samples:
+            val = "n/d" if smp.value is None else f"{smp.value:.2f} {smp.unit}"
+            lines.append(f"   {smp.channel or '—':<28} {val:<16} {smp.raw_name}  "
+                         f"[{smp.sensor_id}]")
+    return "\n".join(lines)
 
 
 @dataclass
@@ -86,7 +247,8 @@ class LiveBuffer:
         """Storia recente: mediane al minuto + campioni grezzi più recenti (il collector li
         scrive ogni 60 s), così i grafici non partono vuoti."""
         ids = {r[1]: r[0] for r in conn.execute("SELECT id, name FROM channels")}
-        for ch in channels:
+        wanted = set(channels) | {n for n in ids if is_live_channel(n)}
+        for ch in sorted(wanted):
             if ch not in ids:
                 continue
             agg = conn.execute(
@@ -115,6 +277,87 @@ class LiveBuffer:
 
 
 # ------------------------------------------------------------------------ stato
+MANUAL_PREFIX = "manual."  # ipotesi inserite dall'utente: il worker di analisi non le chiude
+CONFIDENCES = ("bassa", "media", "alta")
+
+
+def add_manual_hypothesis(conn: sqlite3.Connection, title: str, confidence: str,
+                          notes: str, checks: str) -> int:
+    """Registra un'ipotesi scritta dall'utente (resta attiva finché non la chiude lui)."""
+    title = title.strip()
+    if not title:
+        raise ValueError(tr("Il titolo dell'ipotesi è obbligatorio."))
+    if confidence not in CONFIDENCES:
+        raise ValueError(tr("Confidenza non valida: {c}").format(c=confidence))
+    lines = lambda t: [x.strip() for x in t.splitlines() if x.strip()]  # noqa: E731
+    ts = now_ms()
+    with conn:
+        cur = conn.execute(
+            "INSERT INTO diagnoses(ts, rule_id, title, confidence, supports, contradicts, "
+            "actions, charts, active) VALUES (?,?,?,?,?,'[]',?,'[]',1)",
+            (ts, f"{MANUAL_PREFIX}{ts}", title[:200], confidence,
+             json.dumps(lines(notes)[:20]), json.dumps(lines(checks)[:20])))
+    return int(cur.lastrowid or 0)
+
+
+def close_hypothesis(conn: sqlite3.Connection, diag_id: int) -> None:
+    with conn:
+        conn.execute("UPDATE diagnoses SET active=0 WHERE id=? AND rule_id LIKE ?",
+                     (diag_id, f"{MANUAL_PREFIX}%"))
+
+
+def readiness(conn: sqlite3.Connection) -> dict[str, Any]:
+    """Di cosa dispone l'analisi: ore di dati, canali ricevuti nelle ultime 24 h, finestre
+    stazionarie, carte. Serve a spiegare *perché* non ci sono ipotesi o carte."""
+    now = now_ms()
+    first, last = conn.execute("SELECT MIN(ts), MAX(ts) FROM agg_1min").fetchone()
+    names = {r[0] for r in conn.execute(
+        "SELECT c.name FROM channels c JOIN agg_1min a ON a.channel_id=c.id WHERE a.ts>=? "
+        "AND a.median IS NOT NULL GROUP BY c.name", (now - 86_400_000,))}
+    gpus = gpu_indices(names | {n for n in names})
+    gpus = [i for i in gpus if f"gpu{i}.temp_edge_c" in names or f"gpu{i}.power_w" in names] \
+        or [0]
+    need = {"CPU": ["cpu.pkg.temp_c", "cpu.pkg.power_w"]}
+    for i in gpus:
+        need["GPU" if len(gpus) == 1 else f"GPU {i}"] = [f"gpu{i}.temp_edge_c",
+                                                          f"gpu{i}.power_w"]
+    missing = {k: [c for c in v if c not in names] for k, v in need.items()}
+    nwin = conn.execute("SELECT COUNT(*) FROM windows").fetchone()[0]
+    ncharts = conn.execute("SELECT COUNT(*) FROM chart_state WHERE closed_ts IS NULL"
+                           ).fetchone()[0]
+    return {"hours": 0.0 if first is None else (last - first) / 3_600_000,
+            "have_fans": any(n.endswith("fan_rpm") or n.endswith("fan_pct") for n in names),
+            "missing": {k: v for k, v in missing.items() if v}, "windows": int(nwin),
+            "charts": int(ncharts), "components": list(need)}
+
+
+def readiness_text(r: dict[str, Any]) -> str:
+    """Spiegazione (tradotta) dello stato dell'analisi, usata dove non ci sono ipotesi/carte."""
+    lines = [tr("Dati raccolti: {h:.1f} ore · finestre stazionarie: {w} · carte: {c}").format(
+        h=r["hours"], w=r["windows"], c=r["charts"])]
+    if r["missing"]:
+        for comp, chs in r["missing"].items():
+            lines.append(tr("• {comp}: mancano i canali {chs} (ultime 24 h): senza di essi non "
+                            "si calcola la resistenza termica.").format(
+                comp=comp, chs=", ".join(chs)))
+        lines.append(tr("  Controlla il banner in alto nella scheda «Tempo reale» o premi "
+                        "«Rileva sensori»: di solito LibreHardwareMonitor non è in esecuzione."))
+    elif r["hours"] < 24:
+        lines.append(tr("• I dati sono pochi: servono diverse ore di uso con carichi vari "
+                        "(e alcuni giorni per limiti di controllo affidabili)."))
+    elif r["windows"] == 0:
+        lines.append(tr("• Nessuna finestra stazionaria: serve carico costante per ≥ 5 minuti "
+                        "(un gioco, un rendering). Premi «Analizza ora» dopo averlo fatto."))
+    elif r["charts"] == 0:
+        lines.append(tr("• Premi «Analizza ora» per calcolare indicatori e carte."))
+    else:
+        lines.append(tr("• Nessuna deriva rispetto al baseline: nessuna ipotesi da proporre."))
+    if not r["have_fans"]:
+        lines.append(tr("• Nessuna ventola rilevata: la regola «ventola guasta» non può "
+                        "scattare."))
+    return "\n".join(lines)
+
+
 def collect_status(conn: sqlite3.Connection, cfg: dict[str, Any]) -> dict[str, Any]:
     from ..quality import watchdog
     from ..reporting.html_report import ReportBuilder
@@ -127,7 +370,8 @@ def collect_status(conn: sqlite3.Connection, cfg: dict[str, Any]) -> dict[str, A
         "level WHEN 'action' THEN 0 WHEN 'attention' THEN 1 ELSE 2 END, last_ts DESC")]
     diags = []
     for d in conn.execute("SELECT * FROM diagnoses WHERE active=1 ORDER BY ts DESC"):
-        diags.append({"title": d["title"], "confidence": d["confidence"],
+        diags.append({"id": d["id"], "manual": d["rule_id"].startswith(MANUAL_PREFIX),
+                      "title": d["title"], "confidence": d["confidence"],
                       "supports": json.loads(d["supports"]), "contradicts": json.loads(
                           d["contradicts"]), "actions": json.loads(d["actions"]),
                       "level": rb._diag_level(d["rule_id"])})
@@ -135,8 +379,8 @@ def collect_status(conn: sqlite3.Connection, cfg: dict[str, Any]) -> dict[str, A
         "SELECT * FROM rt_events WHERE start_ts >= ? ORDER BY start_ts DESC LIMIT 100",
         (now_ms() - 30 * 86_400_000,))]
     health = watchdog.check(conn, cfg["alerts"]["stale_heartbeat_min"])
-    return {"tiles": tiles, "alerts": alerts, "diagnoses": diags, "rt": rt, "health": health,
-            "charts": len(states)}
+    return {"readiness": readiness(conn), "tiles": tiles, "alerts": alerts,
+            "diagnoses": diags, "rt": rt, "health": health, "charts": len(states)}
 
 
 def list_charts(conn: sqlite3.Connection) -> list[dict[str, Any]]:

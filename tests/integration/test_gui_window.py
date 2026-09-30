@@ -100,3 +100,34 @@ def test_window_shows_status_charts_events_and_saves_config(
     assert data.make_bundle(tmp_path / "b.zip", tmp_path, db, tmp_path / "hwdrift.yaml")
     app.close()
     assert not (tmp_path / "live.active").exists()
+
+
+def test_window_two_gpus_banner_and_manual_hypothesis(root, tmp_path, monkeypatch):
+    from hwdrift.config import DEFAULTS
+    from hwdrift.gui.app import App
+    from hwdrift.model import now_ms
+    from hwdrift.storage.schema import open_db
+
+    monkeypatch.setenv("HWDRIFT_HOME", str(tmp_path))
+    monkeypatch.setenv("HWDRIFT_LANGUAGE", "en")
+    db = tmp_path / "x.sqlite"
+    open_db(db).close()
+    app = App(root, None, db, copy.deepcopy(DEFAULTS))
+    now = now_ms()
+    (tmp_path / "live.json").write_text(json.dumps({
+        "ts": now, "values": {"gpu0.temp_edge_c": 60.0, "gpu1.temp_edge_c": 70.0,
+                              "gpu1.fan_pct": 35.0},
+        "sources": {"lhm": {"ok": False, "error": "unreachable"}}}))
+    app.tick_live()
+    pump(root, 0.3)
+    assert "60.0 / 70.0" in app.kpi_vars["gpu0.temp_edge_c"].get()
+    assert "lhm: unreachable" in app.sources_var.get()
+    assert "GPU1" in "".join(app.live_charts[1].spec.series)
+    # default text explains why there is nothing; the YAML editor is pre-filled
+    assert "missing" in app.diag_text.get("1.0", "end")
+    assert "sampling:" in app.yaml_text.get("1.0", "end")
+    app.hyp_title.set("Dusty radiator")
+    app.hyp_notes.insert("1.0", "temps up\n")
+    app.add_hypothesis()
+    pump(root, 0.3)
+    assert "Dusty radiator" in app.diag_text.get("1.0", "end")

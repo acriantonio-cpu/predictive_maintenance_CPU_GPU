@@ -118,7 +118,7 @@ def evaluate_alerts(conn: sqlite3.Connection, cfg: dict[str, Any], now: int) -> 
         # ---- diagnosi (ipotesi)
         current = {d.rule_id for d in diags}
         for (rid,) in conn.execute("SELECT rule_id FROM diagnoses WHERE active=1").fetchall():
-            if rid not in current:
+            if rid not in current and not rid.startswith("manual."):  # manuali: li chiude l'utente
                 conn.execute("UPDATE diagnoses SET active=0 WHERE active=1 AND rule_id=?", (rid,))
         for d in diags:
             vals = (now, d.title, d.confidence, json.dumps(d.supports),

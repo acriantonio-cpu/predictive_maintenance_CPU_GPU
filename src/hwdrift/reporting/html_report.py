@@ -127,6 +127,10 @@ class ReportBuilder:
         rt = self._q("SELECT component, reason, severity, end_ts FROM rt_events "
                      "WHERE start_ts >= ?", (self.ref_now - DAY_MS,))
         comps = {"cpu": "CPU", "gpu": "GPU"}
+        for st in states:  # GPU aggiuntive (gpu1, gpu2, ...): un riquadro ciascuna
+            suf = split(st["indicator"])[1]
+            if suf.startswith("gpu") and suf[3:].isdigit() and suf not in comps:
+                comps[suf] = f"GPU {suf[3:]}"
         tiles: list[dict[str, str]] = []
         stale = health.stale_min is None or health.stale_min > 0
         for suffix, label in comps.items():
@@ -136,7 +140,7 @@ class ReportBuilder:
             locked = [s for s in charts if s["phase"] == "II"]
             level = "ok"
             reason = tr("Nessuna deriva rispetto al baseline.")
-            comp_key = "cpu" if suffix == "cpu" else "gpu0"
+            comp_key = {"cpu": "cpu", "gpu": "gpu0"}.get(suffix, suffix)
             for a in alerts:
                 ind = a["key"].split(":")[1].split("|")[0] if a["key"].startswith("chart:") else ""
                 if ind and split(ind)[1] == suffix and a["level"] == "attention" and level == "ok":

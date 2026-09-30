@@ -237,7 +237,10 @@ class Runner:
             return
         try:
             tmp = self.live_path.with_suffix(".tmp")
-            tmp.write_text(json.dumps({"ts": ts, "values": latest}), encoding="utf-8")
+            sources = {st.collector.name: {"ok": st.ok, "error": st.last_error}
+                       for st in self.states}
+            tmp.write_text(json.dumps({"ts": ts, "values": latest, "sources": sources}),
+                           encoding="utf-8")
             tmp.replace(self.live_path)
         except OSError:
             log.debug("live.json non scrivibile", exc_info=True)

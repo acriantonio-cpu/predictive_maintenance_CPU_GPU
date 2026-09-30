@@ -491,3 +491,83 @@ EN.update({
 })
 
 EN.update({"ora": "now"})
+
+EN.update({
+    "Ventola GPU (% del massimo)": "GPU fan (% of maximum)",
+    "Rileva sensori": "Detect sensors",
+    "Sensori rilevati": "Detected sensors",
+    "Rilevamento sensori in corso…": "Detecting sensors…",
+    "Salva come file…": "Save as file…",
+    "errore": "error",
+    "   non disponibile: {err}": "   not available: {err}",
+    " (richiede privilegi elevati)": " (requires elevated privileges)",
+    "   nessun sensore (sorgente di eventi o dati non ancora disponibili)":
+        "   no sensors (event source, or data not available yet)",
+    "{name}: non disponibile": "{name}: not available",
+    "Sorgenti non disponibili (premi «Rileva sensori» per i dettagli):":
+        "Sources not available (press “Detect sensors” for details):",
+    "Se mancano CPU, ventole o la seconda GPU, copia questo testo e invialo a chi ti aiuta "
+    "(non contiene dati personali).":
+        "If the CPU, fans or the second GPU are missing, copy this text and send it to whoever "
+        "is helping you (it contains no personal data).",
+    "Temperatura e potenza della CPU, ventole CPU/case e sensori della scheda madre arrivano da "
+    "LibreHardwareMonitor: avvialo come amministratore e attiva Options > Remote Web Server "
+    "(porta 8085).":
+        "CPU temperature and power, CPU/case fans and motherboard sensors come from "
+        "LibreHardwareMonitor: start it as administrator and enable Options > Remote Web "
+        "Server (port 8085).",
+    "Le GPU NVIDIA (temperatura, potenza, ventola, throttling) si leggono con il pacchetto "
+    "nvidia-ml-py: va incluso nell'exe (installa l'extra [windows] prima di compilare) e "
+    "serve il driver NVIDIA.":
+        "NVIDIA GPUs (temperature, power, fan, throttling) are read with the nvidia-ml-py "
+        "package: it must be bundled in the exe (install the [windows] extra before building) "
+        "and the NVIDIA driver is required.",
+    "I contatori di Windows richiedono pywin32 (extra [windows]).":
+        "Windows counters require pywin32 ([windows] extra).",
+    "Il registro eventi di Windows richiede pywin32 (extra [windows]).":
+        "The Windows event log requires pywin32 ([windows] extra).",
+    "Nessun dato ancora: avvia il collector (pulsante in alto) e lascialo raccogliere.":
+        "No data yet: start the collector (button at the top) and let it collect.",
+    "Dati raccolti: {h:.1f} ore · finestre stazionarie: {w} · carte: {c}":
+        "Data collected: {h:.1f} hours · stationary windows: {w} · charts: {c}",
+    "• {comp}: mancano i canali {chs} (ultime 24 h): senza di essi non si calcola la "
+    "resistenza termica.":
+        "• {comp}: channels {chs} are missing (last 24 h): without them thermal resistance "
+        "cannot be computed.",
+    "  Controlla il banner in alto nella scheda «Tempo reale» o premi «Rileva sensori»: di "
+    "solito LibreHardwareMonitor non è in esecuzione.":
+        "  Check the banner at the top of the “Real time” tab or press “Detect sensors”: "
+        "usually LibreHardwareMonitor is not running.",
+    "• I dati sono pochi: servono diverse ore di uso con carichi vari (e alcuni giorni per "
+    "limiti di controllo affidabili).":
+        "• Little data so far: several hours of use with varied loads are needed (and a few "
+        "days for reliable control limits).",
+    "• Nessuna finestra stazionaria: serve carico costante per ≥ 5 minuti (un gioco, un "
+    "rendering). Premi «Analizza ora» dopo averlo fatto.":
+        "• No stationary window yet: a steady load for ≥ 5 minutes is needed (a game, a "
+        "render). Press “Analyze now” afterwards.",
+    "• Premi «Analizza ora» per calcolare indicatori e carte.":
+        "• Press “Analyze now” to compute indicators and charts.",
+    "• Nessuna deriva rispetto al baseline: nessuna ipotesi da proporre.":
+        "• No drift from the baseline: no hypothesis to propose.",
+    "• Nessuna ventola rilevata: la regola «ventola guasta» non può scattare.":
+        "• No fan detected: the “fan failure” rule cannot fire.",
+    "Il titolo dell'ipotesi è obbligatorio.": "The hypothesis title is required.",
+    "Confidenza non valida: {c}": "Invalid confidence: {c}",
+    "Aggiungi una tua ipotesi (resta finché non la chiudi)":
+        "Add your own hypothesis (stays until you close it)",
+    "Titolo": "Title", "Confidenza": "Confidence", "Ipotesi": "Hypothesis",
+    "Evidenze (una per riga)": "Evidence (one per line)",
+    "Verifiche (una per riga)": "Checks (one per line)",
+    "Aggiungi ipotesi": "Add hypothesis",
+    "Chiudi l'ipotesi selezionata": "Close the selected hypothesis",
+    "Ipotesi aggiunta.": "Hypothesis added.", "Ipotesi chiusa.": "Hypothesis closed.",
+    "scritta da te": "written by you",
+    "bassa": "low", "media": "medium", "alta": "high",
+})
+
+EN.update({
+    "Moduli opzionali ({kind}):": "Optional modules ({kind}):",
+    "MANCANTE": "MISSING",
+    "exe": "exe",
+})

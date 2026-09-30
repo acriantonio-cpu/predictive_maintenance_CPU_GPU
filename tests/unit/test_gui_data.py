@@ -148,3 +148,60 @@ def test_launcher_dispatches_cli_or_gui(monkeypatch, capsys):
     monkeypatch.setattr("hwdrift.gui.app.run_gui", lambda c, d: called.update(c=c, d=d))
     launcher.main(["--db", "x.sqlite"])
     assert str(called["d"]) == "x.sqlite"
+
+
+def test_charts_expand_to_all_gpus_and_fans():
+    chs = ["gpu0.temp_edge_c", "gpu1.temp_edge_c", "gpu1.fan_pct", "chassis.fan1_rpm",
+           "chassis.fan3_rpm", "cpu.fan_rpm"]
+    charts = {t: s for t, _u, s in data.expand_charts(chs)}
+    assert [c for c, _ in charts["GPU: temperatura"]][:2] == ["gpu0.temp_edge_c",
+                                                              "gpu1.temp_edge_c"] or \
+        "gpu1.temp_edge_c" in [c for c, _ in charts["GPU: temperatura"]]
+    assert "gpu1.power_w" in [c for c, _ in charts["GPU: potenza"]]
+    fans = [c for c, _ in charts["Ventole"]]
+    assert "chassis.fan3_rpm" in fans and "gpu1.fan_rpm" in fans
+    # un solo GPU: nessuna moltiplicazione
+    single = {t: s for t, _u, s in data.expand_charts(["gpu0.temp_edge_c"])}
+    assert [c for c, _ in single["GPU: temperatura"]] == ["gpu0.temp_edge_c",
+                                                          "gpu0.temp_hotspot_c",
+                                                          "gpu0.temp_mem_c"]
+
+
+def test_kpi_shows_every_gpu_and_falls_back_to_fan_percent():
+    vals = {"gpu0.temp_edge_c": 60.0, "gpu1.temp_edge_c": 71.5, "gpu0.fan_pct": 40.0}
+    chs = list(vals)
+    assert data.kpi_text("gpu0.temp_edge_c", vals.get, chs, "°C") == ("60.0 / 71.5", "°C")
+    assert data.kpi_text("gpu0.fan_rpm", vals.get, chs, "rpm") == ("40.0 / —", "%")
+    assert data.kpi_text("cpu.fan_rpm", vals.get, chs, "rpm") == ("—", "rpm")
+
+
+def test_sources_problems_explain_remedy():
+    src = {"lhm": {"ok": False, "error": "server non raggiungibile"},
+           "psutil": {"ok": True, "error": ""}}
+    out = data.sources_problems(src)
+    assert len(out) == 1 and out[0].startswith("lhm: server non raggiungibile")
+    assert "LibreHardwareMonitor" in out[0]
+
+
+def test_readiness_and_manual_hypothesis_survive_analysis(tmp_path):
+    import copy
+
+    from hwdrift.analysis.worker import run_analysis
+    from hwdrift.config import DEFAULTS
+    from hwdrift.storage.schema import open_db
+
+    conn = open_db(tmp_path / "h.sqlite")
+    r = data.readiness(conn)
+    assert r["hours"] == 0 and set(r["missing"]) == {"CPU", "GPU"}
+    assert "cpu.pkg.power_w" in data.readiness_text(r)
+    did = data.add_manual_hypothesis(conn, "Polvere sul radiatore", "media",
+                                         "temperature più alte\n", "soffia i filtri")
+    with pytest.raises(ValueError):
+        data.add_manual_hypothesis(conn, "  ", "media", "", "")
+    run_analysis(conn, copy.deepcopy(DEFAULTS), low_priority=False)
+    rows = [r[0] for r in conn.execute("SELECT active FROM diagnoses WHERE id=?", (did,))]
+    assert rows == [1]  # il worker non chiude le ipotesi dell'utente
+    st = data.collect_status(conn, copy.deepcopy(DEFAULTS))
+    assert [d["manual"] for d in st["diagnoses"]] == [True]
+    data.close_hypothesis(conn, did)
+    assert conn.execute("SELECT active FROM diagnoses WHERE id=?", (did,)).fetchone()[0] == 0

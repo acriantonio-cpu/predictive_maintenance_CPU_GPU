@@ -50,3 +50,14 @@ Formato: [Keep a Changelog](https://keepachangelog.com/it/1.1.0/); versionamento
   giornaliere, stato delle sorgenti visibile, fuzzing dei parser.
 - Documentazione: guida passo passo, metodologia, protocollo di validazione, matrice dei
   sensori, modello di minaccia, sicurezza, governance, uso dell'AI.
+
+### Corretto
+- GUI: i grafici mostravano solo `gpu0` e una sola ventola del case; ora una serie per ogni GPU
+  e ventola rilevata, ventola GPU anche in % (schede senza rpm), KPI con più GPU. Il report
+  mostra un riquadro per ogni GPU.
+- Sorgenti mancanti (LibreHardwareMonitor non in esecuzione, `nvidia-ml-py`/pywin32 non inclusi
+  nell'exe) ora sono segnalate nella GUI (banner + «Rileva sensori») e da `hwdrift discover`;
+  `build_exe.ps1` installa e verifica i moduli opzionali prima di PyInstaller.
+- Stato e ipotesi / Carte: senza dati il riquadro spiega cosa manca; ipotesi manuali
+  dell'utente (non chiuse dall'analisi); l'editor YAML parte dalla configurazione di esempio.
+

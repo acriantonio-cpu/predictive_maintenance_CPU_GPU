@@ -294,12 +294,23 @@ stay in Italian.
 
 | Tab | What it offers |
 |---|---|
-| **Real time** | six big values (temperatures, powers, fans) and eight charts scrolling every second: CPU and GPU temperature, powers, fans, load, clock, throttling. Window from 5 to 60 minutes. A red warning if a throttling episode or a stopped fan is in progress. On opening, the charts fill with recent history from the database |
-| **Status and hypotheses** | the traffic light for CPU, GPU, cooling and drives; active alarms; hypotheses with supporting/contradicting signals and checks. Buttons **Analyze now** (in the background, regenerates the report) and **Open the HTML report** |
-| **Control charts** | pick a chart and see the I chart and the moving-range chart with limits, Phase I, signals (triangles) and maintenance |
+| **Real time** | six big values (temperatures, powers, fans; with several GPUs the values are separated by “ / ”) and nine charts scrolling every second: CPU and GPU temperature, powers, fans (CPU, every case fan, every GPU), GPU fan in %, load, clock, throttling. **Every detected GPU** has its own series (GPU0, GPU1…). An orange banner lists unavailable sources with the remedy, and **Detect sensors** shows what HWDrift sees (bundled optional modules, sources, sensors) and saves it to a file. Window from 5 to 60 minutes. A red warning if a throttling episode or a stopped fan is in progress. On opening, the charts fill with recent history from the database |
+| **Status and hypotheses** | the traffic light for CPU, GPU, cooling and drives; active alarms; hypotheses with supporting/contradicting signals and checks. When there are none, the box explains *why* (hours of data, missing channels, stationary windows) instead of staying empty; below it you can **add your own hypothesis** (title, confidence, evidence, checks): it stays active until you close it and the automatic analysis never touches it. Buttons **Analyze now** (in the background, regenerates the report) and **Open the HTML report** |
+| **Control charts** | pick a chart and see the I chart and the moving-range chart with limits, Phase I, signals (triangles) and maintenance. With no charts it explains what is missing (see “Missing sensors” below) |
 | **Events and maintenance** | list of events and a form to record cleanings, re-pastes, fan changes, profiles |
-| **Configuration** | a form with the main settings (language, interval, sources, reference, limits, regimes, notifications, game-safe) and, in the *Advanced YAML* tab, the full file. Every save is **validated**: an invalid configuration never replaces the good one, and a `.bak` copy remains. Comments in the file are lost when saving from the form |
+| **Configuration** | a form with the main settings (language, interval, sources, reference, limits, regimes, notifications, game-safe) and, in the *Advanced YAML* tab, the full file (if it does not exist yet, the editor opens with the example configuration: edit it and press *Validate and save*). Every save is **validated**: an invalid configuration never replaces the good one, and a `.bak` copy remains. Comments in the file are lost when saving from the form |
 | **Log and data** | live log; **Save log…**, **Diagnostic bundle (.zip)** (log, status, configuration, versions; *not* the database), **Save HTML report…**, **Export data** (CSV, JSONL, Parquet, Prometheus, OTLP; anonymous by default), **Open data folder** |
+
+**Missing sensors (CPU, fans, second GPU).** HWDrift does not read sensors by itself:
+- CPU temperature and power, CPU fan, case fans and motherboard come **only** from
+  LibreHardwareMonitor (see step 1): it must be running, **as administrator**, with
+  *Options → Remote Web Server* enabled (port 8085). Without it the orange banner says so and
+  there are no charts or hypotheses (the main indicator is thermal resistance, which needs
+  temperature *and* power);
+- NVIDIA GPUs are read with `nvidia-ml-py` (bundled in the official exe; if you build it
+  yourself, `packaging\build_exe.ps1` installs it before PyInstaller). Every GPU is read
+  (`gpu0`, `gpu1`…), analysed separately and shown in the charts and in the report;
+- from a terminal: `hwdrift discover` (or `python -m hwdrift discover`) lists modules and sensors.
 
 **Top bar.**
 - **▶ Start collector**: starts it without elevated privileges (some low-level sensors may be

@@ -137,6 +137,7 @@ class App:
         head = ttk.Frame(f)
         head.pack(fill="x")
         self.kpi_vars: dict[str, tk.StringVar] = {}
+        self.kpi_units: dict[str, tk.StringVar] = {}
         for i, (label, ch, _unit) in enumerate(data.KPI):
             box = ttk.LabelFrame(head, text=tr(label))
             box.grid(row=0, column=i, padx=3, sticky="ew")
@@ -145,7 +146,12 @@ class App:
             self.kpi_vars[ch] = v
             ttk.Label(box, textvariable=v, font=("TkDefaultFont", 15, "bold"), width=9,
                       anchor="center").pack(padx=6, pady=(2, 0))
-            ttk.Label(box, text=_unit, foreground="#555555", font=("TkDefaultFont", 8)).pack()
+            uv = tk.StringVar(value=_unit)
+            self.kpi_units[ch] = uv
+            ttk.Label(box, textvariable=uv, foreground="#555555", font=("TkDefaultFont", 8)).pack()
+        self.sources_var = tk.StringVar()
+        ttk.Label(f, textvariable=self.sources_var, foreground="#8a5a00", justify="left",
+                  wraplength=1150).pack(fill="x", pady=(4, 0))
         self.ongoing_var = tk.StringVar()
         ttk.Label(f, textvariable=self.ongoing_var, foreground="#b3261e",
                   font=("TkDefaultFont", 10, "bold")).pack(fill="x", pady=(4, 0))
@@ -159,16 +165,17 @@ class App:
         cb.bind("<<ComboboxSelected>>", lambda _e: self._draw_live())
         self.live_msg = tk.StringVar()
         ttk.Label(ctl, textvariable=self.live_msg, foreground="#555555").pack(side="left", padx=8)
+        ttk.Button(ctl, text=tr("Rileva sensori"), command=self.detect_sensors).pack(side="right")
         grid = ttk.Frame(f)
         grid.pack(fill="both", expand=True)
         self.live_charts: list[LineChart] = []
         for i, (title, unit, _series) in enumerate(data.LIVE_CHARTS):
             ch = LineChart(grid, tr(title), tr(unit))
-            ch.grid(row=i // 2, column=i % 2, sticky="nsew", padx=2, pady=2)
+            ch.grid(row=i // 3, column=i % 3, sticky="nsew", padx=2, pady=2)
             self.live_charts.append(ch)
-        for c in range(2):
+        for c in range(3):
             grid.columnconfigure(c, weight=1)
-        for r in range((len(data.LIVE_CHARTS) + 1) // 2):
+        for r in range((len(data.LIVE_CHARTS) + 2) // 3):
             grid.rowconfigure(r, weight=1)
 
     # tab: stato --------------------------------------------------------------
@@ -194,10 +201,41 @@ class App:
                   font=("TkDefaultFont", 10, "bold")).pack(anchor="w", pady=(8, 0))
         self.diag_text = tk.Text(f, height=10, wrap="word", state="disabled", bg="#fafafa")
         self.diag_text.pack(fill="both", expand=True)
+        self._build_hypothesis_form(f)
         ttk.Label(f, text=tr("Non è un avviso di sicurezza né una diagnosi di guasto. In caso di "
                           "temperature elevate o spegnimenti non attendere il tool: "
                           "intervieni."),
                   foreground="#555555", wraplength=1100).pack(anchor="w", pady=2)
+
+    def _build_hypothesis_form(self, f: ttk.Frame) -> None:
+        box = ttk.LabelFrame(f, text=tr("Aggiungi una tua ipotesi (resta finché non la chiudi)"),
+                             padding=6)
+        box.pack(fill="x", pady=(6, 0))
+        box.columnconfigure(1, weight=1)
+        box.columnconfigure(3, weight=1)
+        self.hyp_title = tk.StringVar()
+        self.hyp_conf = tk.StringVar(value=tr("bassa"))
+        ttk.Label(box, text=tr("Titolo")).grid(row=0, column=0, sticky="w")
+        ttk.Entry(box, textvariable=self.hyp_title).grid(row=0, column=1, sticky="ew", padx=4)
+        ttk.Label(box, text=tr("Confidenza")).grid(row=0, column=2, sticky="w")
+        ttk.Combobox(box, textvariable=self.hyp_conf, values=[tr(c) for c in data.CONFIDENCES],
+                     width=10, state="readonly").grid(row=0, column=3, sticky="w", padx=4)
+        ttk.Label(box, text=tr("Evidenze (una per riga)")).grid(row=1, column=0, sticky="nw")
+        self.hyp_notes = tk.Text(box, height=3, width=40)
+        self.hyp_notes.grid(row=1, column=1, sticky="ew", padx=4, pady=2)
+        ttk.Label(box, text=tr("Verifiche (una per riga)")).grid(row=1, column=2, sticky="nw")
+        self.hyp_checks = tk.Text(box, height=3, width=40)
+        self.hyp_checks.grid(row=1, column=3, sticky="ew", padx=4, pady=2)
+        bar = ttk.Frame(box)
+        bar.grid(row=2, column=0, columnspan=4, sticky="ew")
+        ttk.Button(bar, text=tr("Aggiungi ipotesi"), command=self.add_hypothesis).pack(
+            side="left")
+        self.close_var = tk.StringVar()
+        self.close_cb = ttk.Combobox(bar, textvariable=self.close_var, width=40,
+                                     state="readonly")
+        self.close_cb.pack(side="right")
+        ttk.Button(bar, text=tr("Chiudi l'ipotesi selezionata"),
+                   command=self.close_hypothesis).pack(side="right", padx=4)
 
     # tab: carte --------------------------------------------------------------
     def _tab_charts(self) -> None:
@@ -367,6 +405,11 @@ class App:
         if snap is not None and snap[0] != self.last_live_ts:
             self.last_live_ts = snap[0]
             self.live.push(snap[0], snap[1])
+        if snap is not None:
+            probs = data.sources_problems(data.read_sources(self.home / "live.json"))
+            self.sources_var.set(
+                (tr("Sorgenti non disponibili (premi «Rileva sensori» per i dettagli):") + "\n"
+                 + "\n".join(probs[:3])) if probs else "")
         self._draw_live(fresh=snap is not None)
         self.root.after(1000, self.tick_live)
 
@@ -376,16 +419,21 @@ class App:
         minutes = {tr(k): v for k, v in WINDOWS_MIN.items()}.get(self.win_var.get(), 15)
         now = now_ms()
         since = now - minutes * 60_000
+        known = list(self.live.data)
+        base_units = {ch: u for _l, ch, u in data.KPI}
         for ch, var in self.kpi_vars.items():
-            v = self.live.latest(ch) if fresh else None
-            var.set("—" if v is None else f"{v:.0f}" if abs(v) >= 100 else f"{v:.1f}")
-        for chart, (_t, _u, series) in zip(self.live_charts, data.LIVE_CHARTS, strict=True):
+            txt, unit = data.kpi_text(ch, (lambda c: self.live.latest(c)) if fresh
+                                      else (lambda c: None), known, base_units[ch])
+            var.set(txt)
+            self.kpi_units[ch].set(unit)
+        for chart, (_t, _u, series) in zip(self.live_charts, data.expand_charts(known),
+                                           strict=True):
             sp = Spec(x0=since, x1=now, xfmt=time_fmt_relative(now),
                       empty_text=tr("nessun dato (canale non disponibile su questo PC)"))
             for ch, label in series:
                 pts = self.live.series(ch, since)
                 if pts:
-                    sp.series[tr(label)] = pts
+                    sp.series[label] = pts
             chart.set(sp)
         if fresh:
             self.live_msg.set(tr("Aggiornamento in tempo reale (1 s)"))
@@ -396,10 +444,40 @@ class App:
         else:
             self.live_msg.set(tr("Collector non in esecuzione: grafici fermi all'ultimo dato."))
 
+    def detect_sensors(self) -> None:
+        """Elenca le sorgenti e i sensori visibili a HWDrift (come ``hwdrift discover``)."""
+        self.notice(tr("Rilevamento sensori in corso…"))
+        cfg = copy.deepcopy(self.cfg)
+        cfg["sources"]["eventlog"]["enabled"] = False  # non serve e può essere lento
+
+        def done(res: Any, err: Exception | None) -> None:
+            self.notice("")
+            text = res if err is None else f"{tr('errore')}: {err!r}"
+            top = tk.Toplevel(self.root)
+            top.title(tr("Sensori rilevati"))
+            top.geometry("900x560")
+            box = tk.Text(top, wrap="none", font=("TkFixedFont", 10))
+            box.pack(fill="both", expand=True)
+            box.insert("end", text + "\n\n" + tr(
+                "Se mancano CPU, ventole o la seconda GPU, copia questo testo e invialo a chi "
+                "ti aiuta (non contiene dati personali)."))
+            bar = ttk.Frame(top)
+            bar.pack(fill="x")
+
+            def save() -> None:
+                path = filedialog.asksaveasfilename(defaultextension=".txt",
+                                                    initialfile="hwdrift-sensors.txt")
+                if path:
+                    Path(path).write_text(text, encoding="utf-8")
+            ttk.Button(bar, text=tr("Salva come file…"), command=save).pack(side="left", padx=4,
+                                                                            pady=4)
+        self.background(lambda: data.discover_report(cfg), done)
+
     def refresh_slow(self) -> None:
         conn = self.conn()
         if conn is None:
             self.coll_var.set(tr("Collector: nessun database (avvia il collector o la demo)"))
+            self._render_no_data()
             self._schedule_slow()
             return
         with contextlib.closing(conn):
@@ -456,22 +534,68 @@ class App:
         for a in st["alerts"]:
             self.alert_tree.insert("", "end", values=(tr(LEVEL_TEXT[a["level"]]), a["title"],
                                                       a["message"]))
+        out: list[str] = []
+        if not st["diagnoses"]:
+            out.append(tr("Nessuna ipotesi di manutenzione attiva.") + "\n")
+            out.append(data.readiness_text(st["readiness"]) + "\n")
+        for d in st["diagnoses"]:
+            tag = tr("scritta da te") if d["manual"] else tr(LEVEL_TEXT[d["level"]])
+            out.append(tr("{title}  [{level} · confidenza {conf}]").format(
+                title=d["title"], level=tag, conf=tr(d["confidence"])) + "\n")
+            out.extend(f"   + {s}\n" for s in d["supports"])
+            out.extend(tr("   − contrario: {text}").format(text=s) + "\n"
+                       for s in d["contradicts"])
+            out.extend(f"   {i}. {a}\n" for i, a in enumerate(d["actions"], 1))
+            out.append("\n")
+        self._set_diag_text("".join(out))
+        self._manual = [(d["id"], d["title"]) for d in st["diagnoses"] if d["manual"]]
+        self.close_cb.configure(values=[t for _i, t in self._manual])
+        if self._manual and self.close_var.get() not in [t for _i, t in self._manual]:
+            self.close_var.set(self._manual[0][1])
+        if not self._manual:
+            self.close_var.set("")
+
+    def _set_diag_text(self, text: str) -> None:
         self.diag_text.configure(state="normal")
         self.diag_text.delete("1.0", "end")
-        if not st["diagnoses"]:
-            self.diag_text.insert("end", tr("Nessuna ipotesi di manutenzione attiva.") + "\n")
-        for d in st["diagnoses"]:
-            self.diag_text.insert("end", tr("{title}  [{level} · confidenza {conf}]").format(
-                title=d["title"], level=tr(LEVEL_TEXT[d["level"]]),
-                conf=tr(d["confidence"])) + "\n")
-            for s in d["supports"]:
-                self.diag_text.insert("end", f"   + {s}\n")
-            for s in d["contradicts"]:
-                self.diag_text.insert("end", tr("   − contrario: {text}").format(text=s) + "\n")
-            for i, a in enumerate(d["actions"], 1):
-                self.diag_text.insert("end", f"   {i}. {a}\n")
-            self.diag_text.insert("end", "\n")
+        self.diag_text.insert("end", text)
         self.diag_text.configure(state="disabled")
+
+    def add_hypothesis(self) -> None:
+        conf = {tr(c): c for c in data.CONFIDENCES}.get(self.hyp_conf.get(), "bassa")
+        conn = self.conn(write=True)
+        if conn is None:
+            return
+        try:
+            with contextlib.closing(conn):
+                data.add_manual_hypothesis(
+                    conn, self.hyp_title.get(), conf, self.hyp_notes.get("1.0", "end"),
+                    self.hyp_checks.get("1.0", "end"))
+        except (ValueError, sqlite3.Error) as exc:
+            messagebox.showerror(tr("Ipotesi"), str(exc))
+            return
+        self.hyp_title.set("")
+        self.hyp_notes.delete("1.0", "end")
+        self.hyp_checks.delete("1.0", "end")
+        self.notice(tr("Ipotesi aggiunta."))
+        self.refresh_slow()
+
+    def close_hypothesis(self) -> None:
+        sel = self.close_var.get()
+        ids = [i for i, t in getattr(self, "_manual", []) if t == sel]
+        conn = self.conn(write=True) if ids else None
+        if conn is None:
+            return
+        with contextlib.closing(conn):
+            data.close_hypothesis(conn, ids[0])
+        self.notice(tr("Ipotesi chiusa."))
+        self.refresh_slow()
+
+    def _render_no_data(self) -> None:
+        msg = tr("Nessun dato ancora: avvia il collector (pulsante in alto) e lascialo "
+                 "raccogliere.")
+        self._set_diag_text(msg + "\n")
+        self.chart_info.set(msg)
 
     def _render_charts_list(self, charts: list[dict[str, Any]]) -> None:
         labels = []
@@ -494,7 +618,8 @@ class App:
                 "nessuna carta: serve qualche giorno di raccolta e un'analisi "
                 "(scheda «Stato e ipotesi»)")))
             self.chart_mr.set(Spec(empty_text=""))
-            self.chart_info.set("")
+            self.chart_info.set(data.readiness_text(self.status["readiness"])
+                                if self.status else "")
             return
         st = self._charts_cache[self._chart_labels.index(label)]
         conn = self.conn()
@@ -719,9 +844,10 @@ class App:
         self.cfg_path_var.set(tr("File: {path}").format(path=path)
                               + ("" if path.exists() else tr(" (verrà creato)")))
         self.yaml_text.delete("1.0", "end")
-        self.yaml_text.insert("end", path.read_text(encoding="utf-8") if path.exists()
-                              else tr("# nessun file di configurazione: si usano i valori "
-                                      "predefiniti") + "\n")
+        if path.exists():
+            self.yaml_text.insert("end", path.read_text(encoding="utf-8"))
+        else:  # nessun file: si propone la configurazione di esempio (valori predefiniti)
+            self.insert_example()
 
     def save_form(self) -> None:
         try:
