@@ -27,7 +27,8 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from ..model import now_ms
+from ..i18n import resolve_language, set_language, tr
+from ..model import now_ms, rt_reason
 from ..quality import watchdog
 from ..storage.schema import connect, get_meta
 from . import toast
@@ -37,8 +38,6 @@ log = logging.getLogger(__name__)
 SEV_RANK = {"info": 0, "warning": 1, "error": 2}
 LVL_RANK = {"info": 0, "attention": 1, "action": 2}
 COMP_LABEL = {"cpu": "CPU", "gpu0": "GPU"}
-REASON = {"thermal": "throttling termico", "power_limit": "limite di potenza",
-          "fan_stopped": "ventola ferma con temperatura alta"}
 
 
 def _boot_ms() -> int | None:
@@ -69,6 +68,7 @@ class Notifier:
                  show: Callable[[str, str], bool] = toast.show) -> None:
         self.db = db
         self.cfg = cfg
+        set_language(resolve_language(cfg))
         self.state_path = state_dir / "notifier_state.json"
         self.status_path = state_dir / "status.json"
         self.state = _load(self.state_path)
@@ -126,17 +126,17 @@ class Notifier:
                 "WHERE start_ts >= ? ORDER BY start_ts", (now - 7 * 86_400_000,)):
             key = str(rid)
             prev = self.state["rt"].get(key)
-            label = f"{COMP_LABEL.get(comp, comp.upper())}: {REASON.get(reason, reason)}"
+            label = f"{COMP_LABEL.get(comp, comp.upper())}: {rt_reason(reason)}"
             if end is None:
                 status["ongoing"].append({"component": comp, "reason": reason, "severity": sev,
                                           "since": start, "peak": peak})
             if sev == "info":
                 continue  # il limite di potenza è spesso voluto: solo nel report
             if prev is None or SEV_RANK[sev] > SEV_RANK.get(prev, -1):
-                body = ("Errore immediato: intervenire se si ripete. " if sev == "error"
-                        else "Attenzione: normale su un portatile o in una stanza calda. ")
+                body = tr("Errore immediato: intervenire se si ripete. " if sev == "error"
+                          else "Attenzione: normale su un portatile o in una stanza calda. ")
                 if peak is not None:
-                    body += f"Picco {peak:.0f}."
+                    body += tr("Picco {peak}.").format(peak=f"{peak:.0f}")
                 self._notify(f"HWDrift — {label}", body)
                 self.state["rt"][key] = sev
         live_rt = {str(r[0]) for r in conn.execute(
@@ -162,9 +162,9 @@ class Notifier:
         # ---- watchdog del collector
         h = watchdog.check(conn, self.cfg["alerts"]["stale_heartbeat_min"], now)
         if h.heartbeat_ts is None:
-            status["collector"] = "mai avviato"
+            status["collector"] = tr("mai avviato")
         elif h.stale_min:
-            status["collector"] = f"nessun dato da {h.stale_min:.0f} minuti"
+            status["collector"] = tr("nessun dato da {n} minuti").format(n=f"{h.stale_min:.0f}")
             last = self.state.get("stale_notified")
             # all'accesso notificatore e collector partono insieme: l'heartbeat è quello
             # della sessione precedente. Si avvisa solo dopo un periodo di grazia.
@@ -173,16 +173,18 @@ class Notifier:
             in_grace = (now - self.started_ms < grace_ms
                         or (booted is not None and now - booted < 2 * grace_ms))
             if not in_grace and (last is None or last < h.heartbeat_ts):
-                self._notify("HWDrift — collector fermo",
-                             f"Nessun dato da {h.stale_min:.0f} minuti: lo stato di salute non è "
-                             "aggiornato. Controllare l'attività pianificata del collector.")
+                self._notify(tr("HWDrift — collector fermo"),
+                             tr("Nessun dato da {n} minuti: lo stato di salute non è aggiornato. "
+                                "Controllare l'attività pianificata del collector."
+                                ).format(n=f"{h.stale_min:.0f}"))
                 self.state["stale_notified"] = h.heartbeat_ts
         if h.failing_collectors:
             status["failing"] = h.failing_collectors
             key = ",".join(h.failing_collectors)
             if self.state.get("failing_notified") != key:
-                self._notify("HWDrift — sorgente in errore",
-                             f"Sorgenti non funzionanti: {key}. Alcuni indicatori mancano.")
+                self._notify(tr("HWDrift — sorgente in errore"),
+                             tr("Sorgenti non funzionanti: {key}. Alcuni indicatori mancano."
+                                ).format(key=key))
                 self.state["failing_notified"] = key
         elif "failing_notified" in self.state:
             del self.state["failing_notified"]

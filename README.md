@@ -13,6 +13,8 @@ cloud, nessun account, nessuna connessione di rete di default.
 - Segnala **subito** (pochi secondi) il throttling grave e le ventole ferme.
 - Non modifica mai l'hardware (curve ventola, limiti di potenza).
 
+> **English version: [README.en.md](README.en.md)** · documentazione inglese in [docs/en/](docs/en/USER_GUIDE.md).
+>
 > **Guida passo passo (come funziona e come farlo partire): [docs/GUIDA_UTENTE.md](docs/GUIDA_UTENTE.md)**
 >
 > **Interfaccia grafica** (`hwdrift-gui.exe`): grafici in tempo reale, stato, carte, eventi,
@@ -61,6 +63,7 @@ src/hwdrift/
 ├── reporting/    report HTML accessibile (SVG, nessuno script)
 ├── sim/          modello termico sintetico e scenari di guasto
 ├── gui/          interfaccia grafica (tkinter): data.py (testabile senza Tk), widgets, app
+├── i18n.py, i18n_en.py   localizzazione (inglese predefinito, italiano disponibile)
 ├── healthcheck.py, selftest.py, runner.py, cli.py
 packaging/        PyInstaller (hwdrift-gui.spec, build_exe.ps1) · .github/workflows/build-exe.yml
 ```
@@ -75,6 +78,7 @@ packaging/        PyInstaller (hwdrift-gui.spec, build_exe.ps1) · .github/workf
 | [docs/matrice_sensori.md](docs/matrice_sensori.md) | sorgenti, canali, disponibilità da compilare in M0 |
 | [docs/interoperabilita.md](docs/interoperabilita.md) | schema aperto, Prometheus, OpenTelemetry |
 | [docs/AUDIT.md](docs/AUDIT.md) | audit del codice e stato delle correzioni |
+| [docs/en/USER_GUIDE.md](docs/en/USER_GUIDE.md) | copia inglese di tutta la documentazione (cartella `docs/en/`) |
 | [schemas/](schemas/) | JSON Schema di campioni, indicatori, eventi, carte, segnali |
 | [SECURITY.md](SECURITY.md), [THREAT_MODEL.md](THREAT_MODEL.md) | sicurezza e modello di minaccia |
 | [CONTRIBUTING.md](CONTRIBUTING.md), [GOVERNANCE.md](GOVERNANCE.md), [AI_USAGE.md](AI_USAGE.md) | contributi, governance, uso dell'AI |

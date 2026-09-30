@@ -1,5 +1,7 @@
 # Matrice dei sensori (da compilare in M0)
 
+> Copia in inglese: [`docs/en/sensor_matrix.md`](en/sensor_matrix.md); i due file vanno tenuti allineati.
+
 Lo script `scripts/m0_spike.py` produce per ogni macchina `summary.json` con la
 disponibilità dei canali canonici e dei flag di throttling. Copiare qui i risultati.
 

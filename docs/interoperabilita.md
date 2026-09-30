@@ -1,5 +1,7 @@
 # Standard e interoperabilità (requisito 15.6)
 
+> Copia in inglese: [`docs/en/interoperability.md`](en/interoperability.md); i due file vanno tenuti allineati.
+
 ## Schema aperto
 
 `schemas/*.schema.json` (JSON Schema 2020-12, versione `1.0`) descrive campioni

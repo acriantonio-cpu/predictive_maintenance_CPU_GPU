@@ -12,6 +12,7 @@ import sqlite3
 from dataclasses import dataclass
 from typing import Any
 
+from ..i18n import tr
 from ..model import EVENT_KINDS, USER_EVENT_KINDS, now_ms
 
 MAX_NOTE = 500
@@ -66,7 +67,7 @@ def list_events(conn: sqlite3.Connection, since: int | None = None, until: int |
 
 
 def describe(kind: str) -> str:
-    return EVENT_KINDS.get(kind, kind)
+    return tr(EVENT_KINDS.get(kind, kind))
 
 
 def confounder_times(conn: sqlite3.Connection) -> list[int]:

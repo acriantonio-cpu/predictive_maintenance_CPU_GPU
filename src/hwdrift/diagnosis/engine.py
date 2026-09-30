@@ -15,6 +15,8 @@ from typing import Any
 
 import yaml
 
+from ..i18n import tr
+
 LEVELS = ("none", "info", "attention", "action")
 CONF = ("low", "medium", "high")
 
@@ -118,7 +120,8 @@ def _match(cond: dict[str, Any], ev: Evidence, min_level: str = "info"
     if "event" in cond:
         hours = ev.config_event_hours if cond["event"] == "config" else ev.maintenance_event_hours
         if hours is not None and hours <= float(cond.get("within_hours", 24)):
-            return "action", [f"evento {cond['event']} {hours:.0f} h fa"], []
+            return "action", [tr("evento {event} {hours} h fa").format(
+                event=cond["event"], hours=f"{hours:.0f}")], []
         return "none", [], []
     sig = cond["signal"]
     regimes = cond.get("regimes")
@@ -137,7 +140,7 @@ def _match(cond: dict[str, Any], ev: Evidence, min_level: str = "info"
                       for lvl in _side_charts(st, side, regimes).values()]
             if st.locked and not any(level_ge(lvl, "attention") for lvl in levels):
                 best = "action"  # la stabilità non limita il livello
-                desc.append(f"{name} stabile")
+                desc.append(tr("{name} stabile").format(name=name))
             continue
         for side in (("upper", "lower") if sig == "any" else (sig,)):
             sel = {c: lvl for c, lvl in _side_charts(st, side, regimes).items()
@@ -147,7 +150,8 @@ def _match(cond: dict[str, Any], ev: Evidence, min_level: str = "info"
             lvl = max(sel.values(), key=LEVELS.index)
             comps.add(_component(name))
             charts += list(sel)
-            desc.append(f"{name} {'in salita' if side == 'upper' else 'in calo'} ({lvl})")
+            desc.append(tr("{name} in salita ({lvl})" if side == "upper"
+                           else "{name} in calo ({lvl})").format(name=name, lvl=lvl))
             if level_ge(lvl, best):
                 best = lvl
     need = int(cond.get("distinct_components", 1))
@@ -208,8 +212,8 @@ def diagnose(rules: list[dict[str, Any]], ev: Evidence) -> list[Diagnosis]:
             level = r["max_level"]
         if not level_ge(level, "attention") and r["max_level"] != "info":
             continue  # un segnale isolato non basta per proporre un'ipotesi di guasto
-        out.append(Diagnosis(r["id"], r["title"], confidence, level, req_desc + sup, con,
-                             list(r.get("actions", [])), sorted(set(charts))))
+        out.append(Diagnosis(r["id"], tr(r["title"]), confidence, level, req_desc + sup, con,
+                             [tr(a) for a in r.get("actions", [])], sorted(set(charts))))
     out.sort(key=lambda d: (-LEVELS.index(d.level), -CONF.index(d.confidence)))
     return out
 

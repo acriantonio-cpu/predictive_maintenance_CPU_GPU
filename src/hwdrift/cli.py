@@ -556,7 +556,10 @@ def init_config(path: Path = typer.Option(Path("hwdrift.yaml"), help="file da cr
     if path.exists():
         typer.echo(f"{path} esiste già.", err=True)
         raise typer.Exit(1)
-    text = resources.files("hwdrift").joinpath("hwdrift.example.yaml").read_text(encoding="utf-8")
+    from .i18n import get_language
+
+    name = "hwdrift.example.it.yaml" if get_language() == "it" else "hwdrift.example.yaml"
+    text = resources.files("hwdrift").joinpath(name).read_text(encoding="utf-8")
     path.write_text(text, encoding="utf-8")
     typer.echo(f"Creato {path}")
 

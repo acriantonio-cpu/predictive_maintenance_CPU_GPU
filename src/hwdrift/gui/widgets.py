@@ -9,6 +9,8 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 
+from ..i18n import tr
+
 PALETTE = ["#0b57d0", "#c2410c", "#15803d", "#7e22ce", "#b45309", "#0e7490"]
 BG, FG, MUTED, GRID = "#ffffff", "#1a1a1a", "#555555", "#dddddd"
 LIMIT, LIMIT2, CENTER, PHASE1 = "#b3261e", "#b45309", "#444444", "#e8eefc"
@@ -67,7 +69,9 @@ def fmt_num(v: float) -> str:
 def time_fmt_relative(now_ms: float) -> Callable[[float], str]:
     def f(x: float) -> str:
         s = (x - now_ms) / 1000
-        return "ora" if abs(s) < 1 else f"-{abs(s) / 60:.0f} min" if abs(s) >= 90 else f"{s:.0f} s"
+        if abs(s) < 1:
+            return tr("ora")
+        return f"-{abs(s) / 60:.0f} min" if abs(s) >= 90 else f"{s:.0f} s"
     return f
 
 
@@ -125,7 +129,7 @@ class LineChart(tk.Canvas):
         if sp.shade_until is not None and sp.shade_until > x0:
             self.create_rectangle(ml, mt, min(X(sp.shade_until), ml + pw), mt + ph,
                                   outline="", fill=PHASE1)
-            self.create_text(ml + 4, mt + 2, anchor="nw", text="Fase I", fill=MUTED,
+            self.create_text(ml + 4, mt + 2, anchor="nw", text=tr("Fase I"), fill=MUTED,
                              font=("TkDefaultFont", 8))
         for t in nice_ticks(lo, hi):
             self.create_line(ml, Y(t), ml + pw, Y(t), fill=GRID)

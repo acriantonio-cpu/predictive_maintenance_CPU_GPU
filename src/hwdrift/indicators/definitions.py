@@ -5,6 +5,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from ..i18n import tr
+
 
 @dataclass(frozen=True)
 class IndicatorDef:
@@ -86,10 +88,12 @@ def definition(indicator: str) -> IndicatorDef | None:
 
 
 def caption(indicator: str, regime: str) -> str:
+    """Didascalia di una riga, nella lingua attiva."""
     base, comp = split(indicator)
     d = DEFS.get(base)
-    label = {"cpu": "CPU", "gpu": "GPU", "": "sistema"}.get(comp, comp.upper())
-    reg = {"idle": "a riposo", "medium": "carico medio", "high": "carico alto",
-           "all": "tutti i carichi", "load": "sotto carico", "day": "giornaliero"}.get(regime,
-                                                                                     regime)
-    return f"{base.replace('_', ' ')} {label}, {reg}: {d.caption if d else ''}"
+    label = {"cpu": "CPU", "gpu": "GPU", "": tr("sistema")}.get(comp, comp.upper())
+    reg = {"idle": tr("a riposo"), "medium": tr("carico medio"), "high": tr("carico alto"),
+           "all": tr("tutti i carichi"), "load": tr("sotto carico"),
+           "day": tr("giornaliero")}.get(regime, regime)
+    return tr("{base} {label}, {reg}: {caption}").format(
+        base=base.replace("_", " "), label=label, reg=reg, caption=tr(d.caption) if d else "")

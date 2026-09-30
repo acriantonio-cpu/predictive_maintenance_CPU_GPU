@@ -1,5 +1,7 @@
 # Modello di minaccia (requisito 15.3)
 
+> Copia in inglese: [`docs/en/THREAT_MODEL.md`](docs/en/THREAT_MODEL.md); i due file vanno tenuti allineati.
+
 Versione 0.1 — da rivedere prima di ogni release e dopo ogni nuova sorgente di dati.
 
 ## Asset

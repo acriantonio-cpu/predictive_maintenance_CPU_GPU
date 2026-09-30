@@ -52,7 +52,8 @@ def test_example_config_is_valid_and_packaged():
     from pathlib import Path
 
     root = Path(__file__).resolve().parents[2]
-    ex = root / "hwdrift.example.yaml"
-    pkg = root / "src" / "hwdrift" / "hwdrift.example.yaml"
-    assert ex.read_text(encoding="utf-8") == pkg.read_text(encoding="utf-8")
-    load_config(ex)
+    for name, lang in (("hwdrift.example.yaml", "en"), ("hwdrift.example.it.yaml", "it")):
+        ex = root / name
+        pkg = root / "src" / "hwdrift" / name
+        assert ex.read_text(encoding="utf-8") == pkg.read_text(encoding="utf-8")
+        assert load_config(ex)["language"] == lang

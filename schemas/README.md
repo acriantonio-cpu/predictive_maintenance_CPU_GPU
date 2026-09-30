@@ -1,5 +1,7 @@
 # Schema aperto HWDrift (v1.0)
 
+> Copia in inglese: [`../docs/en/schemas.md`](../docs/en/schemas.md); i due file vanno tenuti allineati.
+
 Schemi JSON (draft 2020-12) per telemetria di condizione hardware ed eventi di
 manutenzione. `hwdrift export --format jsonl` produce un file per tipo, un record per
 riga, conforme a questi schemi; la CI li valida.

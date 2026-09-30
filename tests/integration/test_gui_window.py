@@ -33,7 +33,12 @@ def pump(root, sec):
         time.sleep(0.02)
 
 
-def test_window_shows_status_charts_events_and_saves_config(root, tmp_path, monkeypatch):
+@pytest.mark.parametrize(("lang", "dust", "obs", "value", "done", "tab"), [
+    ("it", "Polvere", "osservazioni", "valore", "Analisi completata", "Stato e ipotesi"),
+    ("en", "Dust", "observations", "value", "Analysis completed", "Status and hypotheses"),
+])
+def test_window_shows_status_charts_events_and_saves_config(
+        root, tmp_path, monkeypatch, lang, dust, obs, value, done, tab):
     from hwdrift.analysis.worker import run_analysis
     from hwdrift.config import DEFAULTS
     from hwdrift.gui import data
@@ -43,6 +48,7 @@ def test_window_shows_status_charts_events_and_saves_config(root, tmp_path, monk
     from hwdrift.storage.schema import open_db
 
     monkeypatch.setenv("HWDRIFT_HOME", str(tmp_path))
+    monkeypatch.setenv("HWDRIFT_LANGUAGE", lang)
     cfg = copy.deepcopy(DEFAULTS)
     db = tmp_path / "demo.sqlite"
     conn = open_db(db)
@@ -55,11 +61,12 @@ def test_window_shows_status_charts_events_and_saves_config(root, tmp_path, monk
     # stato: semaforo, allarmi e ipotesi dal database
     assert app.status and any(t["status"] == "action" for t in app.status["tiles"])
     assert app.alert_tree.get_children()
-    assert "Polvere" in app.diag_text.get("1.0", "end")
+    assert dust in app.diag_text.get("1.0", "end")
+    assert tab in [app.nb.tab(i, "text") for i in range(app.nb.index("end"))]
     # carte: selezione di una carta e disegno di I + MR
     assert app._charts_cache and app.chart_var.get()
-    assert app.chart_i.spec.series["valore"] and app.chart_i.spec.hlines
-    assert "osservazioni" in app.chart_info.get()
+    assert app.chart_i.spec.series[value] and app.chart_i.spec.hlines
+    assert obs in app.chart_info.get()
     # tempo reale: la GUI chiede i dati al collector e li mostra
     (tmp_path / "live.json").write_text(json.dumps(
         {"ts": now_ms(), "values": {"cpu.pkg.temp_c": 61.5, "cpu.pkg.power_w": 88}}))
@@ -71,7 +78,7 @@ def test_window_shows_status_charts_events_and_saves_config(root, tmp_path, monk
     app.ev_kind.set("maintenance.clean")
     app.ev_note.set("pulizia di prova")
     app.add_event()
-    assert any("maintenance.clean" in app.ev_tree.item(i)["values"]
+    assert any("maintenance.clean" in str(app.ev_tree.item(i)["values"])
                for i in app.ev_tree.get_children())
     # configurazione: modifica dal modulo e salvataggio validato
     app.cfg_vars["sampling.interval_s"].set("2")
@@ -88,7 +95,7 @@ def test_window_shows_status_charts_events_and_saves_config(root, tmp_path, monk
     # analizza ora in background
     app.analyze_now()
     pump(root, 6)
-    assert "Analisi completata" in app.notice_var.get()
+    assert done in app.notice_var.get()
     assert (tmp_path / "report.html").exists()
     assert data.make_bundle(tmp_path / "b.zip", tmp_path, db, tmp_path / "hwdrift.yaml")
     app.close()

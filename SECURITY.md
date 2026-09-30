@@ -1,5 +1,7 @@
 # Sicurezza
 
+> Copia in inglese: [`docs/en/SECURITY.md`](docs/en/SECURITY.md); i due file vanno tenuti allineati.
+
 ## Segnalare una vulnerabilità
 
 Non aprire una issue pubblica. Usa la funzione **"Report a vulnerability"** (GitHub
@@ -17,7 +19,8 @@ Solo l'ultima versione pubblicata riceve correzioni di sicurezza.
    amministratori (es. `C:\Program Files\HWDrift`), non nella cartella utente.
 2. Metti il file di configurazione usato dal collector elevato in una cartella protetta
    e passalo con `--config`: un file modificabile dall'utente può cambiare gli
-   eseguibili esterni usati (`smartctl`).
+   eseguibili esterni usati (`smartctl`). La GUI salva la configurazione nella cartella dati
+   dell'utente: non puntare un collector elevato a quel file.
 3. Preferisci LibreHardwareMonitor in modalità `web` (loopback): HWDrift non carica il
    driver kernel nel proprio processo.
 4. Notificatore e analisi girano **senza** privilegi (vedi `hwdrift schedule install`).

@@ -1,10 +1,17 @@
 # Changelog
 
+> Copia in inglese: [`docs/en/CHANGELOG.md`](docs/en/CHANGELOG.md); i due file vanno tenuti allineati.
+
 Formato: [Keep a Changelog](https://keepachangelog.com/it/1.1.0/); versionamento semantico.
 
 ## [Non rilasciato] — 0.1.0.dev0
 
 ### Aggiunto
+- Localizzazione inglese: GUI, report HTML, allarmi, ipotesi di diagnosi, notifiche e
+  descrizioni degli eventi sono in inglese per default; l'italiano resta disponibile
+  (`language: it`, `HWDRIFT_LANGUAGE`, scheda Configurazione della GUI). Catalogo di traduzione
+  con test che fallisce se mancano voci. Copia completa della documentazione in inglese in
+  `docs/en/`.
 - Interfaccia grafica `hwdrift-gui` (tkinter, nessuna dipendenza nuova): grafici in tempo reale,
   stato e ipotesi, carte di controllo, eventi e manutenzioni, configurazione (modulo + YAML
   validato), log, pacchetto diagnostico, esportazione; avvio/arresto del collector anche

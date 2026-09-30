@@ -15,6 +15,8 @@ import math
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
+from ..i18n import tr
+
 
 @dataclass
 class Series:
@@ -55,8 +57,9 @@ def chart(series: Series, lines: Lines, title: str, desc: str, uid: str,
     w, h = width - ml - mr, height - mt - mb
     xs, ys = series.ts, series.values
     if not xs:
-        return (f'<p class="empty" role="note">{html.escape(title)}: copertura insufficiente, '
-                "nessuna osservazione.</p>")
+        return ('<p class="empty" role="note">' + tr(
+            "{title}: copertura insufficiente, nessuna osservazione.").format(
+                title=html.escape(title)) + "</p>")
     vals = [v for v in ys if math.isfinite(v)]
     for v in (lines.ucl, lines.lcl, lines.center):
         if v is not None and math.isfinite(v):
@@ -83,7 +86,7 @@ def chart(series: Series, lines: Lines, title: str, desc: str, uid: str,
     if series.phase1_end is not None and x0 <= series.phase1_end:
         xe = min(X(series.phase1_end), ml + w)
         out.append(f'<rect x="{ml}" y="{mt}" width="{xe - ml:.1f}" height="{h}" class="phase1"/>')
-        out.append(f'<text x="{ml + 4}" y="{mt + 12}" class="lbl">Fase I</text>')
+        out.append(f'<text x="{ml + 4}" y="{mt + 12}" class="lbl">{tr("Fase I")}</text>')
     for t, kind in events or []:
         if x0 <= t <= x1:
             out.append(f'<line x1="{X(t):.1f}" x2="{X(t):.1f}" y1="{mt}" y2="{mt + h}" '

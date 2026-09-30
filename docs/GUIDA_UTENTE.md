@@ -1,5 +1,7 @@
 # HWDrift — Guida passo passo
 
+> Copia in inglese: [`en/USER_GUIDE.md`](en/USER_GUIDE.md); i due file vanno tenuti allineati.
+
 > Come funziona e come farlo partire. Documento mantenuto insieme al codice: ogni
 > modifica al comportamento del tool aggiorna anche questa guida
 > (vedi [CONTRIBUTING.md](../CONTRIBUTING.md)). Ultimo aggiornamento: versione 0.1.0.dev0.
@@ -290,6 +292,14 @@ L'eseguibile è anche la CLI: `hwdrift-gui.exe run`, `hwdrift-gui.exe analyze`, 
 uguale (e `hwdrift schedule install` registra proprio quell'eseguibile).
 Opzioni: `--config file.yaml`, `--db file.sqlite`.
 
+**Lingua.** Interfaccia, report, allarmi e ipotesi sono in **inglese** per default; l'italiano è
+disponibile: `language: it` in `hwdrift.yaml`, il campo *Lingua* nella scheda *Configurazione*
+(ha effetto al riavvio della finestra) oppure la variabile d'ambiente `HWDRIFT_LANGUAGE=it`
+(prevale sul file). Aiuto della riga di comando e righe di log restano in italiano. Nelle tabelle
+qui sotto i nomi delle schede e dei pulsanti sono quelli italiani; in inglese corrispondono a
+*Real time*, *Status and hypotheses*, *Control charts*, *Events and maintenance*,
+*Configuration*, *Log and data*.
+
 **Schede.**
 
 | Scheda | Cosa offre |
@@ -476,6 +486,7 @@ utili (esempio completo in [`hwdrift.example.yaml`](../hwdrift.example.yaml)):
 
 | Chiave | Default | Cosa fa |
 |---|---|---|
+| `language` | `en` | `en` o `it`: interfaccia, report, allarmi, ipotesi, notifiche |
 | `sampling.interval_s` | 1.0 | intervallo di campionamento (0,5–5 s) |
 | `sources.lhm.mode` | `web` | `web` (server di LHM) o `dll` (pythonnet) |
 | `profile.reference.mode` | `channel` | T_rif: `channel` (proxy, es. `ssd0.temp_c`), `user` (valore fisso), `none` |
@@ -486,7 +497,7 @@ utili (esempio completo in [`hwdrift.example.yaml`](../hwdrift.example.yaml)):
 | `game_safe.processes` | anti-cheat comuni | processi che sospendono le sorgenti a basso livello |
 
 Variabili d'ambiente: `HWDRIFT_HOME` (cartella dati), `HWDRIFT_CONFIG` (file di
-configurazione).
+configurazione), `HWDRIFT_LANGUAGE` (`en` o `it`, prevale sul file).
 
 ---
 
@@ -508,7 +519,7 @@ configurazione).
 | `Errore di configurazione: chiave sconosciuta` | Refuso in `hwdrift.yaml`: il messaggio indica la chiave |
 
 Log: `%LOCALAPPDATA%\HWDrift\hwdrift.log` (rotazione a 2 MB). Aggiungi `-v` a qualsiasi
-comando per il dettaglio.
+comando per il dettaglio. Messaggi della riga di comando e righe di log sono in italiano.
 
 ---
 
@@ -530,7 +541,7 @@ comando per il dettaglio.
 | `hwdrift notify` | notificatore non privilegiato |
 | `hwdrift status` | collector, episodi in corso, allarmi attivi |
 | `hwdrift schedule install / remove` | attività pianificate di Windows |
-| `hwdrift init-config` | crea `hwdrift.yaml` di esempio |
+| `hwdrift init-config` | crea `hwdrift.yaml` di esempio (nella lingua configurata) |
 | `hwdrift-gui` / `hwdrift-gui.exe` | interfaccia grafica (con un comando della tabella funziona come la CLI) |
 
 Opzioni globali: `--config FILE`, `--db FILE`, `-v`.

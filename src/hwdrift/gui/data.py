@@ -21,6 +21,7 @@ import yaml
 
 from .. import __version__
 from ..config import ConfigError, load_config
+from ..i18n import tr
 from ..model import now_ms
 
 # ------------------------------------------------------------------- grafici live
@@ -156,7 +157,7 @@ def chart_series(conn: sqlite3.Connection, st: dict[str, Any]) -> dict[str, Any]
     sigs: dict[int, str] = {}
     for r in conn.execute("SELECT ts, rule, side, label FROM signals WHERE chart_id=? AND "
                           "segment=? ORDER BY ts", (st["chart_id"], st["segment"])):
-        txt = f"{r['rule']} {'sopra' if r['side'] == 'upper' else 'sotto'}"
+        txt = f"{r['rule']} {tr('sopra') if r['side'] == 'upper' else tr('sotto')}"
         if r["label"] != "maintenance":
             txt += f" [{r['label']}]"
         sigs[r["ts"]] = f"{sigs[r['ts']]}; {txt}" if r["ts"] in sigs else txt
@@ -180,6 +181,10 @@ class Field:
 
 
 CONFIG_FIELDS: list[tuple[str, list[Field]]] = [
+    ("Lingua", [
+        Field("language", "Lingua dell'interfaccia, dei report e degli allarmi", "choice",
+              ("en", "it"), "en = English, it = Italiano. Si applica al riavvio della finestra."),
+    ]),
     ("Campionamento", [
         Field("sampling.interval_s", "Intervallo di campionamento (s)", "float",
               help="0,5–5 s. Più corto = più carico sul PC."),

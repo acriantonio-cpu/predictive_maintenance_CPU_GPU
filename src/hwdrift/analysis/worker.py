@@ -31,6 +31,7 @@ from ..context.events import config_times, confounder_times, scoped_breaks, segm
 from ..context.minutes import load_minutes
 from ..context.regimes import RegimeBounds, calibrate
 from ..context.windows import find_windows
+from ..i18n import resolve_language, set_language, tr
 from ..indicators import baseline as bl
 from ..indicators.definitions import COUNT_EVENT_KINDS
 from ..indicators.rth import window_indicators
@@ -73,6 +74,7 @@ class Worker:
     def __init__(self, conn: sqlite3.Connection, cfg: dict[str, Any]) -> None:
         self.conn = conn
         self.cfg = cfg
+        set_language(resolve_language(cfg))
         self.summary: dict[str, Any] = {"warnings": []}
 
     # -------------------------------------------------------------- helpers
@@ -110,8 +112,8 @@ class Worker:
         ref, ref_name = reference_series(self.cfg, mf.get, mf.has, mf.ts.size)
         self.summary["reference"] = ref_name
         if ref_name == "none" and ref_cfg["mode"] != "none":
-            msg = (f"riferimento T_rif '{ref_cfg.get('channel')}' non disponibile: "
-                   "si usa la temperatura assoluta")
+            msg = tr("riferimento T_rif '{channel}' non disponibile: si usa la temperatura "
+                     "assoluta").format(channel=ref_cfg.get("channel"))
             if msg not in self.summary["warnings"]:
                 self.summary["warnings"].append(msg)
         wins = find_windows(mf, comp, wcfg, confounder_times(self.conn), ref, start_from)
@@ -364,9 +366,9 @@ class Worker:
         s["windows_new"] = sum(self.step_windows(c) for c in comps)
         for c in comps:
             if self.step_regimes(c) is None:
-                s["warnings"].append(f"{c.label}: regimi non ancora calibrati "
-                                     f"(servono {self.cfg['regimes']['calibration_windows']} "
-                                     "finestre stazionarie)")
+                s["warnings"].append(tr(
+                    "{label}: regimi non ancora calibrati (servono {n} finestre stazionarie)"
+                ).format(label=c.label, n=self.cfg["regimes"]["calibration_windows"]))
             self.step_window_indicators(c)
             self.step_models(c)
         self.step_daily(comps)

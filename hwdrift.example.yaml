@@ -1,53 +1,55 @@
-# HWDrift — configurazione di esempio.
-# Copiare in hwdrift.yaml (cartella corrente) oppure nella cartella dati
-# (%LOCALAPPDATA%\HWDrift su Windows). Ogni chiave omessa usa il default.
-# Le chiavi sconosciute producono un errore esplicito.
+# HWDrift — example configuration.
+# Copy to hwdrift.yaml (current folder) or to the data folder (%LOCALAPPDATA%\HWDrift on
+# Windows). Every omitted key uses its default. Unknown keys produce an explicit error.
+# (Italian version: hwdrift.example.it.yaml)
+
+language: en             # en | it: interface, reports, alarms, hypotheses, notifications
 
 sampling:
   interval_s: 1.0          # 0.5–5 s
-  flush_s: 60              # scrittura in batch
-  raw_retention_h: 48      # il grezzo a 1 Hz si tiene 48 ore; gli aggregati per sempre
-  adaptive: true           # allunga l'intervallo se l'overhead supera il budget
-  cpu_budget_pct: 1.0      # % di un core
+  flush_s: 60              # batch writes
+  raw_retention_h: 48      # raw 1 Hz data is kept 48 hours; aggregates are kept forever
+  adaptive: true           # lengthen the interval if the overhead exceeds the budget
+  cpu_budget_pct: 1.0      # % of one core
   rss_budget_mb: 100
 
 sources:
   simulator:
-    enabled: false         # true = nessun hardware, dati sintetici (sviluppo)
+    enabled: false         # true = no hardware, synthetic data (development)
     scenario: healthy      # healthy | throttle | frozen | crash | power_limit
   lhm:
     enabled: true
-    mode: web              # web: server web di LibreHardwareMonitor (Options > Remote Web Server)
-    url: http://127.0.0.1:8085/data.json   # solo loopback
+    mode: web              # web: LibreHardwareMonitor web server (Options > Remote Web Server)
+    url: http://127.0.0.1:8085/data.json   # loopback only
     # mode: dll
     # dll_path: C:\Tools\LibreHardwareMonitor\LibreHardwareMonitorLib.dll
   nvml:
-    enabled: true          # GPU NVIDIA (opzionale)
+    enabled: true          # NVIDIA GPU (optional)
   eventlog:
     enabled: true          # WHEA, TDR, Kernel-Power, BugCheck
   perfcounters:
-    enabled: true          # clock effettivo della CPU
+    enabled: true          # effective CPU clock
   psutil:
     enabled: true
   sysinfo:
-    enabled: true          # versioni di driver e BIOS -> eventi di configurazione
+    enabled: true          # driver and BIOS versions -> configuration events
   smart:
     enabled: false
-    devices: []            # es. ["/dev/sda"] o ["\\\\.\\PhysicalDrive0"]
+    devices: []            # e.g. ["/dev/sda"] or ["\\\\.\\PhysicalDrive0"]
 
 profile:
   auto_mapping: true
-  mapping: {}              # incollare qui l'output di: hwdrift discover --write-profile p.yaml
+  mapping: {}              # paste here the output of: hwdrift discover --write-profile p.yaml
   reference:
     mode: channel          # channel | user | none
-    channel: ssd0.temp_c   # proxy interno dell'ambiente (si contamina se l'airflow peggiora)
-    value_c: 22.0          # usato con mode: user
+    channel: ssd0.temp_c   # internal proxy for the ambient (gets contaminated if airflow worsens)
+    value_c: 22.0          # used with mode: user
   cpu:
-    nominal_clock_mhz: null  # null = dai contatori di Windows
+    nominal_clock_mhz: null  # null = from the Windows counters
     tjmax_c: 100
   gpu:
     thermal_limit_c: 83
-  baseline_state: unknown  # clean se il PC è appena stato pulito
+  baseline_state: unknown  # clean if the PC has just been cleaned
 
 realtime:
   debounce_s: 7
@@ -67,8 +69,8 @@ spc:
   phase1_min_obs: 25
   phase1_min_days: 5
   phase1_min_sessions: 5
-  rules: [R1, R2, R3]      # carte giornaliere (R4 opzionale)
-  window_rules: [R1]       # carte per finestra (autocorrelate)
+  rules: [R1, R2, R3]      # daily charts (R4 optional)
+  window_rules: [R1]       # per-window charts (autocorrelated)
 
 alerts:
   lookback_days: 14

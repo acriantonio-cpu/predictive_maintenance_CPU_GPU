@@ -93,6 +93,20 @@ USER_EVENT_KINDS = tuple(
 )
 
 
+# motivi degli episodi in tempo reale (rt_events.reason)
+RT_REASONS: dict[str, str] = {
+    "thermal": "throttling termico", "power_limit": "limite di potenza",
+    "fan_stopped": "ventola ferma con temperatura alta",
+}
+
+
+def rt_reason(reason: str) -> str:
+    """Motivo di un episodio in tempo reale, nella lingua attiva."""
+    from .i18n import tr
+
+    return tr(RT_REASONS.get(reason, reason))
+
+
 def is_config_event(kind: str) -> bool:
     return kind.startswith("config.")
 

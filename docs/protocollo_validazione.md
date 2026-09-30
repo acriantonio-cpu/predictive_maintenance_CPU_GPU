@@ -1,5 +1,7 @@
 # Protocollo di validazione (sezione 12) e stato attuale
 
+> Copia in inglese: [`docs/en/validation_protocol.md`](en/validation_protocol.md); i due file vanno tenuti allineati.
+
 | Fase | Metodo | Stato | Strumento nel repository |
 |---|---|---|---|
 | 0. Simulazione statistica | generatore sintetico con degrado, cambi di carico, ambiente | **parziale**: scenari di coerenza e ARL di R1 su dati indipendenti | `hwdrift simulate`, `sim/`, `tests/integration/test_scenarios.py`, `tests/property/` |

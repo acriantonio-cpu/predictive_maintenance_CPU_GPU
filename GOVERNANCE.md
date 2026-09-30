@@ -1,5 +1,7 @@
 # Governance
 
+> Copia in inglese: [`docs/en/GOVERNANCE.md`](docs/en/GOVERNANCE.md); i due file vanno tenuti allineati.
+
 ## Ruoli
 
 - **Maintainer principale**: @Antonio (autore della specifica). Decide su roadmap,

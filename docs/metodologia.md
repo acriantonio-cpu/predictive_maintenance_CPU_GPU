@@ -1,5 +1,7 @@
 # Metodologia
 
+> Copia in inglese: [`docs/en/methodology.md`](en/methodology.md); i due file vanno tenuti allineati.
+
 Questo documento spiega **come** HWDrift trasforma la telemetria in segnali e ipotesi, e
 **perché** alcune scelte si discostano dalla specifica o la precisano. Ogni scelta è
 un'ipotesi di progetto da confermare nelle fasi di validazione
@@ -112,7 +114,8 @@ Regole in `src/hwdrift/diagnosis/rules/default.yaml`. Condizioni su indicatori (
 regimi, numero di componenti) ed eventi. Le controindicazioni contano solo a livello
 attenzione (i segnali info isolati sono rumore atteso con ~50 carte); una
 controindicazione `blocking` annulla l'ipotesi. Un'ipotesi viene proposta solo a livello
-≥ attenzione (tranne le regole informative come "ambiente").
+≥ attenzione (tranne le regole informative come "ambiente"). Titoli e azioni suggerite sono
+tradotti tramite il catalogo `src/hwdrift/i18n_en.py`.
 
 Ipotesi di simulazione da verificare in Fase 3: la ventola segue la temperatura del
 *dissipatore*, quindi la pasta secca alza Rth ma non lo sforzo ventola. Una stanza più
@@ -149,3 +152,4 @@ alternative restano da misurare (Fase 0 completa).
 | Regimi: esempio 50%/80% | default 30%/65% | vedi §3 |
 | R2/R3 su tutte le carte | solo sulle carte giornaliere | autocorrelazione (vedi §5) |
 | Solo Windows | collector Linux sperimentale | dimostra l'indipendenza del nucleo (requisito 15.2) |
+| Documento e interfaccia solo in italiano | inglese predefinito, italiano disponibile (`language`) | pubblico internazionale; i testi del codice sono in italiano e fanno da chiave di traduzione (`i18n.py`) |

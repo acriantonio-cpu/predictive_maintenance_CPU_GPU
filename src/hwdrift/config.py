@@ -18,6 +18,7 @@ from typing import Any
 import yaml
 
 DEFAULTS: dict[str, Any] = {
+    "language": "en",  # "en" | "it": interfaccia grafica, report, allarmi, ipotesi, notifiche
     "data_dir": None,  # None = cartella dati di piattaforma (vedi default_data_dir)
     "sampling": {
         "interval_s": 1.0,  # 0.5–5 s (sezione 2)
@@ -182,6 +183,8 @@ def _check_type(dval: Any, val: Any, where: str) -> Any:
 
 
 def _validate(cfg: dict[str, Any]) -> None:
+    if cfg["language"] not in ("en", "it"):
+        raise ConfigError("language: en | it")
     s = cfg["sampling"]
     if not 0.1 <= s["interval_s"] <= 60:
         raise ConfigError("sampling.interval_s deve essere tra 0.1 e 60 s")
@@ -241,6 +244,9 @@ def load_config(path: str | os.PathLike[str] | None = None) -> dict[str, Any]:
     cfg = _merge(DEFAULTS, user, "")
     _validate(cfg)
     cfg["_source"] = str(source) if source else None
+    from .i18n import resolve_language, set_language
+
+    set_language(resolve_language(cfg))
     return cfg
 
 

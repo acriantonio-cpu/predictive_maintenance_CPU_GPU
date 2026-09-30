@@ -23,6 +23,7 @@ from typing import Any
 
 from ..context.events import describe
 from ..diagnosis.engine import LEVELS, Evidence, IndicatorState, diagnose, level_ge, load_rules
+from ..i18n import tr
 from ..indicators.definitions import CONTEXT_INDICATORS, SECONDARY_BASES, caption, split
 from ..storage.schema import set_meta
 
@@ -131,8 +132,8 @@ def evaluate_alerts(conn: sqlite3.Connection, cfg: dict[str, Any], now: int) -> 
                 conn.execute("INSERT INTO diagnoses(ts, title, confidence, supports, contradicts,"
                              " actions, charts, rule_id, active) VALUES (?,?,?,?,?,?,?,?,1)",
                              (*vals, d.rule_id))
-            msg = (f"Ipotesi: {d.title} (confidenza {d.confidence}). "
-                   f"Verifica suggerita: {d.actions[0] if d.actions else '-'}")
+            msg = tr("Ipotesi: {title} (confidenza {conf}). Verifica suggerita: {action}").format(
+                title=d.title, conf=tr(d.confidence), action=d.actions[0] if d.actions else "-")
             _upsert(conn, seen, f"diag:{d.rule_id}", d.level, d.title, msg, now)
         # ---- carte singole (info / attenzione)
         for (cid, side), lvl in levels.items():
@@ -143,34 +144,36 @@ def evaluate_alerts(conn: sqlite3.Connection, cfg: dict[str, Any], now: int) -> 
                                            and regime in ("medium", "high"))
             if not relevant or ind in CONTEXT_INDICATORS:
                 continue
-            verso = "in salita" if side == "upper" else "in calo"
-            _upsert(conn, seen, f"chart:{cid}:{side}", lvl, f"{ind} {verso} ({regime})",
-                    caption(ind, regime), now)
+            text = tr("{ind} in salita ({regime})" if side == "upper"
+                      else "{ind} in calo ({regime})").format(ind=ind, regime=regime)
+            _upsert(conn, seen, f"chart:{cid}:{side}", lvl, text, caption(ind, regime), now)
         # ---- rilevamento semi-automatico della pulizia
         if ev.maintenance_event_hours is None:
             for (cid, side), lvl in levels.items():
                 base = split(cid.split("|")[0])[0]
                 if side == "lower" and lvl == "attention" and base in ("rth", "idle_temp"):
                     _upsert(conn, seen, f"cleaning:{cid.split('|')[0]}", "info",
-                            "Hai fatto manutenzione?",
-                            f"{cid.split('|')[0]} è sceso in modo brusco e persistente senza un "
-                            "evento registrato. Se hai pulito o cambiato la pasta, registralo con "
-                            "'hwdrift event add maintenance.clean --at <data>'", now)
+                            tr("Hai fatto manutenzione?"),
+                            tr("{ind} è sceso in modo brusco e persistente senza un evento "
+                               "registrato. Se hai pulito o cambiato la pasta, registralo con "
+                               "'hwdrift event add maintenance.clean --at <data>'"
+                               ).format(ind=cid.split("|")[0]), now)
         # ---- cambi di configurazione: conferma richiesta
         for eid, ts, kind, detail in conn.execute(
                 "SELECT id, ts, kind, detail FROM events WHERE kind LIKE 'config.%' AND ts >= ?",
                 (lookback,)).fetchall():
-            _upsert(conn, seen, f"config:{eid}", "info", f"Configurazione: {describe(kind)}",
-                    f"Evento del {_fmt_ts(ts)} {detail}. Le carte coinvolte ripartono con una "
-                    "nuova Fase I (limiti provvisori): nessun allarme di manutenzione. Confermare "
-                    "che il cambio sia voluto.", now)
+            _upsert(conn, seen, f"config:{eid}", "info",
+                    tr("Configurazione: {kind}").format(kind=describe(kind)),
+                    tr("Evento del {when} {detail}. Le carte coinvolte ripartono con una nuova "
+                       "Fase I (limiti provvisori): nessun allarme di manutenzione. Confermare "
+                       "che il cambio sia voluto.").format(when=_fmt_ts(ts), detail=detail), now)
         # ---- errori fatali: sempre allarme
         for eid, ts in conn.execute(
                 "SELECT id, ts FROM events WHERE kind = 'hw.whea_fatal' AND ts >= ?",
                 (lookback,)).fetchall():
-            _upsert(conn, seen, f"fatal:{eid}", "action", "Errore hardware fatale (WHEA)",
-                    f"Errore non corretto registrato il {_fmt_ts(ts)}: intervenire subito "
-                    "(diagnostica di memoria, CPU, PCIe).", now)
+            _upsert(conn, seen, f"fatal:{eid}", "action", tr("Errore hardware fatale (WHEA)"),
+                    tr("Errore non corretto registrato il {when}: intervenire subito "
+                       "(diagnostica di memoria, CPU, PCIe).").format(when=_fmt_ts(ts)), now)
         # ---- budget di allarmi
         month = now - 30 * DAY_MS
         n_action = conn.execute("SELECT COUNT(*) FROM alerts WHERE level='action' AND "
@@ -178,10 +181,10 @@ def evaluate_alerts(conn: sqlite3.Connection, cfg: dict[str, Any], now: int) -> 
         exceeded = n_action > acfg["action_budget_per_month"]
         set_meta(conn, "alert_budget_exceeded", "1" if exceeded else "0")
         if exceeded:
-            _upsert(conn, seen, "budget", "info", "Troppi allarmi",
-                    f"{n_action} allarmi di livello azione negli ultimi 30 giorni (budget "
-                    f"{acfg['action_budget_per_month']}): rivedere soglie e regole invece di "
-                    "continuare a notificare.", now)
+            _upsert(conn, seen, "budget", "info", tr("Troppi allarmi"),
+                    tr("{n} allarmi di livello azione negli ultimi 30 giorni (budget {budget}): "
+                       "rivedere soglie e regole invece di continuare a notificare.").format(
+                        n=n_action, budget=acfg["action_budget_per_month"]), now)
         for (key,) in conn.execute("SELECT key FROM alerts WHERE active=1").fetchall():
             if key not in seen:
                 conn.execute("UPDATE alerts SET active=0 WHERE key=?", (key,))

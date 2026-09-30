@@ -23,7 +23,9 @@ import numpy as np
 
 from .. import __version__
 from ..context.events import describe
+from ..i18n import get_language, resolve_language, set_language, tr
 from ..indicators.definitions import SECONDARY_BASES, caption, definition, split
+from ..model import rt_reason
 from ..quality import watchdog
 from ..spc.imr import moving_ranges
 from ..storage.schema import get_meta
@@ -37,8 +39,6 @@ STATUS_TEXT = {"ok": "OK", "attention": "Attenzione", "action": "Azione",
                "unknown": "Dati insufficienti", "error": "Errore"}
 LEVEL_TEXT = {"info": "Info", "attention": "Attenzione", "action": "Azione"}
 SEV_TEXT = {"info": "Info", "warning": "Attenzione", "error": "Errore immediato"}
-REASON_TEXT = {"thermal": "throttling termico", "power_limit": "limite di potenza",
-               "fan_stopped": "ventola ferma con temperatura alta"}
 RULE_TEXT = {"R1": "punto oltre 3σ", "R2": "9 punti dallo stesso lato",
              "R3": "6 punti in salita/discesa", "R4": "2 su 3 oltre 2σ",
              "MR": "salto (range mobile)", "EWMA": "EWMA", "CUSUM": "CUSUM",
@@ -53,18 +53,18 @@ def fmt_ts(ts: int | None) -> str:
 
 def _status_badge(status: str) -> str:
     return (f'<span class="badge b-{status}"><span aria-hidden="true">●</span> '
-            f"{STATUS_TEXT[status]}</span>")
+            f"{tr(STATUS_TEXT[status])}</span>")
 
 
 def _level_badge(level: str) -> str:
     cls = {"info": "unknown", "attention": "attention", "action": "action"}[level]
-    return f'<span class="badge b-{cls}">{LEVEL_TEXT[level]}</span>'
+    return f'<span class="badge b-{cls}">{tr(LEVEL_TEXT[level])}</span>'
 
 
 def _table(caption_text: str, headers: list[str], rows: list[list[str]],
            raw: bool = False) -> str:
     if not rows:
-        return f'<p class="empty">{E(caption_text)}: nessun dato.</p>'
+        return f'<p class="empty">{E(caption_text)}: {tr("nessun dato")}.</p>'
     h = "".join(f'<th scope="col">{E(x)}</th>' for x in headers)
     body = "".join("<tr>" + "".join(f"<td>{c if raw else E(c)}</td>" for c in r) + "</tr>"
                    for r in rows)
@@ -75,12 +75,12 @@ def _table(caption_text: str, headers: list[str], rows: list[list[str]],
 def recovery_outcome(zpre: float, zpost: float) -> str:
     """Esito di una manutenzione per un indicatore che peggiora salendo (unità di σ)."""
     if zpre < 1.0:
-        return "nessuna deriva prima"
+        return tr("nessuna deriva prima")
     if zpost <= 1.5:
-        return "recuperato"  # tornato al baseline (o sotto: meglio di prima)
+        return tr("recuperato")  # tornato al baseline (o sotto: meglio di prima)
     if zpost < zpre - 0.5:
-        return "migliorato"
-    return "non migliorato"
+        return tr("migliorato")
+    return tr("non migliorato")
 
 
 class ReportBuilder:
@@ -88,6 +88,7 @@ class ReportBuilder:
                  ) -> None:
         self.conn = conn
         self.cfg = cfg
+        set_language(resolve_language(cfg))
         row = conn.execute("SELECT MAX(ts) FROM agg_1min").fetchone()
         self.last_ts: int | None = row[0] if row else None
         real_now = int(datetime.now(UTC).timestamp() * 1000)
@@ -111,11 +112,11 @@ class ReportBuilder:
 
     def _chart_status(self, st: dict[str, Any]) -> str:
         if st["phase"] == "I":
-            return ("copertura insufficiente" if st["params"].get("status") == "insufficient"
-                    else "provvisoria (Fase I in corso)")
+            return (tr("copertura insufficiente") if st["params"].get("status") == "insufficient"
+                    else tr("provvisoria (Fase I in corso)"))
         if st["params"].get("degenerate"):
-            return "costante (nessuna variabilità)"
-        return "provvisoria" if st["provisional"] else "definitiva"
+            return tr("costante (nessuna variabilità)")
+        return tr("provvisoria") if st["provisional"] else tr("definitiva")
 
     # ------------------------------------------------------------- sections
     def overall(self, states: list[dict[str, Any]]) -> tuple[str, list[dict[str, str]]]:
@@ -134,75 +135,87 @@ class ReportBuilder:
                 continue
             locked = [s for s in charts if s["phase"] == "II"]
             level = "ok"
-            reason = "Nessuna deriva rispetto al baseline."
+            reason = tr("Nessuna deriva rispetto al baseline.")
             comp_key = "cpu" if suffix == "cpu" else "gpu0"
             for a in alerts:
                 ind = a["key"].split(":")[1].split("|")[0] if a["key"].startswith("chart:") else ""
                 if ind and split(ind)[1] == suffix and a["level"] == "attention" and level == "ok":
-                    level, reason = "attention", f"Segnale persistente: {a['title']}."
+                    level, reason = "attention", tr("Segnale persistente: {title}.").format(
+                        title=a["title"])
             for d in diags:
                 chs = json.loads(d["charts"] or "[]")
                 if any(split(c.split("|")[0])[1] == suffix for c in chs):
                     lvl = self._diag_level(d["rule_id"])
                     if lvl == "action":
-                        level, reason = "action", f"Ipotesi: {d['title']} ({d['confidence']})."
+                        level, reason = "action", tr("Ipotesi: {title} ({conf}).").format(
+                            title=d["title"], conf=tr(d["confidence"]))
                     elif lvl == "attention" and level == "ok":
-                        level, reason = "attention", f"Ipotesi: {d['title']}."
+                        level, reason = "attention", tr("Ipotesi: {title}.").format(
+                            title=d["title"])
             for r in rt:
                 if r["component"] == comp_key and r["severity"] == "error":
                     level = "action"
-                    reason = f"Errore immediato: {REASON_TEXT.get(r['reason'], r['reason'])}" + (
-                        " (in corso)." if r["end_ts"] is None else " nelle ultime 24 ore.")
+                    reason = tr("Errore immediato: {reason}{tail}").format(
+                        reason=rt_reason(r["reason"]),
+                        tail=tr(" (in corso).") if r["end_ts"] is None
+                        else tr(" nelle ultime 24 ore."))
             if level == "ok" and not locked:
-                level, reason = "unknown", ("Baseline in costruzione: nessuna carta definitiva. "
-                                            "L'assenza di segnali non indica buona salute.")
+                level, reason = "unknown", tr(
+                    "Baseline in costruzione: nessuna carta definitiva. L'assenza di segnali "
+                    "non indica buona salute.")
             if stale and level == "ok":
-                level, reason = "unknown", "Dati non aggiornati: stato non verificabile."
+                level, reason = "unknown", tr("Dati non aggiornati: stato non verificabile.")
             tiles.append({"label": label, "status": level, "reason": reason})
         cool = [d for d in diags if d["rule_id"] in ("dust_airflow", "paste_contact",
                                                      "fan_failure")]
         if cool:
             d = cool[0]
             lvl = self._diag_level(d["rule_id"])
-            tiles.append({"label": "Raffreddamento",
+            tiles.append({"label": tr("Raffreddamento"),
                           "status": "action" if lvl == "action" else "attention",
-                          "reason": f"{d['title']} (confidenza {d['confidence']})."})
+                          "reason": tr("{title} (confidenza {conf}).").format(
+                              title=d["title"], conf=tr(d["confidence"]))})
         elif tiles:
             ok = all(t["status"] == "ok" for t in tiles)
-            tiles.append({"label": "Raffreddamento", "status": "ok" if ok else "unknown",
-                          "reason": "Nessuna ipotesi di manutenzione attiva." if ok else
-                          "Valutazione limitata dalla copertura dei dati."})
+            tiles.append({"label": tr("Raffreddamento"), "status": "ok" if ok else "unknown",
+                          "reason": tr("Nessuna ipotesi di manutenzione attiva.") if ok else
+                          tr("Valutazione limitata dalla copertura dei dati.")})
         ssd = self._q("SELECT c.name, MAX(a.max) AS mx FROM agg_1min a JOIN channels c "
                       "ON c.id=a.channel_id WHERE c.name LIKE 'ssd%.temp_c' AND a.ts >= ? "
                       "GROUP BY c.name", (self.ref_now - 7 * DAY_MS,))
         if ssd:
             hot = [r for r in ssd if r["mx"] is not None and r["mx"] >= 70]
-            tiles.append({"label": "Dischi", "status": "attention" if hot else "ok",
-                          "reason": ("Temperatura massima SSD negli ultimi 7 giorni: "
-                                     + ", ".join(f"{r['name'].split('.')[0]} {r['mx']:.0f} °C"
-                                                 for r in ssd) + ". Solo monitoraggio della "
-                                     "temperatura: nessuna previsione di guasto.")})
+            temps = ", ".join(f"{r['name'].split('.')[0]} {r['mx']:.0f} °C" for r in ssd)
+            tiles.append({"label": tr("Dischi"), "status": "attention" if hot else "ok",
+                          "reason": tr("Temperatura massima SSD negli ultimi 7 giorni: {temps}. "
+                                       "Solo monitoraggio della temperatura: nessuna previsione "
+                                       "di guasto.").format(temps=temps)})
         html_tiles = "".join(
             f'<div class="tile t-{t["status"]}"><h3>{E(t["label"])}</h3>'
             f'{_status_badge(t["status"])}<p>{E(t["reason"])}</p></div>' for t in tiles)
-        coll = ("attivo" if not stale else
-                (f"fermo da {health.stale_min:.0f} minuti" if health.stale_min else "mai avviato"))
-        extra = (f'<p>Ultimo campione: <strong>{E(fmt_ts(self.last_ts))}</strong>. Collector: '
-                 f"<strong>{E(coll)}</strong>.")
+        coll = (tr("attivo") if not stale else
+                (tr("fermo da {n} minuti").format(n=f"{health.stale_min:.0f}")
+                 if health.stale_min else tr("mai avviato")))
+        extra = ("<p>" + tr("Ultimo campione: {when}. Collector: {state}.").format(
+            when=f"<strong>{E(fmt_ts(self.last_ts))}</strong>",
+            state=f"<strong>{E(coll)}</strong>"))
         if health.failing_collectors:
-            extra += f" Sorgenti in errore: {E(', '.join(health.failing_collectors))}."
+            extra += " " + tr("Sorgenti in errore: {names}.").format(
+                names=E(", ".join(health.failing_collectors)))
         extra += "</p>"
         extra += self.sources()
         if get_meta(self.conn, "alert_budget_exceeded") == "1":
-            extra += ('<p class="warn">Budget di allarmi superato: le notifiche di livello azione '
-                      "sono sospese. Rivedere soglie e regole.</p>")
+            extra += ('<p class="warn">' + tr(
+                "Budget di allarmi superato: le notifiche di livello azione sono sospese. "
+                "Rivedere soglie e regole.") + "</p>")
         bstate = get_meta(self.conn, "baseline_state") or self.cfg["profile"]["baseline_state"]
         if bstate == "unknown":
-            extra += ('<p class="note">Stato del PC all\'inizio del baseline: <em>sconosciuto</em>.'
-                      " Il tool riporta solo i cambiamenti rispetto al baseline, non uno stato "
-                      "assoluto: se il PC era già sporco, il degrado è incluso nei limiti. Per un "
-                      "riferimento affidabile pulire il PC e avviare una nuova Fase I "
-                      "(<code>hwdrift baseline start --state clean</code>).</p>")
+            extra += ('<p class="note">' + tr(
+                "Stato del PC all'inizio del baseline: <em>sconosciuto</em>. Il tool riporta "
+                "solo i cambiamenti rispetto al baseline, non uno stato assoluto: se il PC era "
+                "già sporco, il degrado è incluso nei limiti. Per un riferimento affidabile "
+                "pulire il PC e avviare una nuova Fase I "
+                "(<code>hwdrift baseline start --state clean</code>).") + "</p>")
         return f'<div class="tiles">{html_tiles}</div>{extra}', tiles
 
     def sources(self) -> str:
@@ -215,12 +228,14 @@ class ReportBuilder:
             return ""
         rows = []
         for s in st:
-            state = ("attiva" if s.get("ok") else "sospesa (game-safe)" if s.get("suspended")
-                     else "non disponibile" if not s.get("started") else "in errore")
+            state = (tr("attiva") if s.get("ok") else tr("sospesa (game-safe)")
+                     if s.get("suspended") else tr("non disponibile") if not s.get("started")
+                     else tr("in errore"))
             rows.append([s.get("name", ""), state, str(s.get("last_error", ""))[:160]])
-        return ("<details><summary>Sorgenti di dati</summary>"
-                + _table("Stato delle sorgenti all'ultimo salvataggio del collector",
-                         ["Sorgente", "Stato", "Ultimo errore"], rows) + "</details>")
+        return ("<details><summary>" + tr("Sorgenti di dati") + "</summary>"
+                + _table(tr("Stato delle sorgenti all'ultimo salvataggio del collector"),
+                         [tr("Sorgente"), tr("Stato"), tr("Ultimo errore")], rows)
+                + "</details>")
 
     def _diag_level(self, rule_id: str) -> str:
         r = self.conn.execute("SELECT level FROM alerts WHERE key=?", (f"diag:{rule_id}",)
@@ -233,24 +248,24 @@ class ReportBuilder:
         ongoing = [r for r in rows if r["end_ts"] is None]
         head = ""
         if ongoing:
-            head = ('<p class="warn" role="status"><strong>Episodio in corso:</strong> '
-                    + "; ".join(f"{r['component'].upper()} {REASON_TEXT.get(r['reason'], '')}"
-                                for r in ongoing) + "</p>")
+            head = ('<p class="warn" role="status"><strong>' + tr("Episodio in corso:")
+                    + "</strong> " + "; ".join(f"{r['component'].upper()} {rt_reason(r['reason'])}"
+                                               for r in ongoing) + "</p>")
         body = []
         for r in rows:
-            dur = ("in corso" if r["end_ts"] is None
+            dur = (tr("in corso") if r["end_ts"] is None
                    else f"{(r['end_ts'] - r['start_ts']) / 1000:.0f} s")
             body.append([fmt_ts(r["start_ts"]), dur, r["component"].upper(),
-                         REASON_TEXT.get(r["reason"], r["reason"]), SEV_TEXT[r["severity"]],
+                         rt_reason(r["reason"]), tr(SEV_TEXT[r["severity"]]),
                          "—" if r["peak"] is None else f"{r['peak']:.1f}"])
-        return head + _table("Episodi di throttling grave e ventole ferme (ultimi 30 giorni)",
-                             ["Inizio", "Durata", "Componente", "Motivo", "Gravità", "Picco"],
-                             body)
+        return head + _table(tr("Episodi di throttling grave e ventole ferme (ultimi 30 giorni)"),
+                             [tr("Inizio"), tr("Durata"), tr("Componente"), tr("Motivo"),
+                              tr("Gravità"), tr("Picco")], body)
 
     def hypotheses(self) -> str:
         rows = self._q("SELECT * FROM diagnoses WHERE active=1 ORDER BY ts DESC")
         if not rows:
-            return '<p class="empty">Nessuna ipotesi di manutenzione attiva.</p>'
+            return '<p class="empty">' + tr("Nessuna ipotesi di manutenzione attiva.") + "</p>"
         out = []
         for d in rows:
             lvl = self._diag_level(d["rule_id"])
@@ -259,14 +274,17 @@ class ReportBuilder:
             acts = json.loads(d["actions"])
             out.append(
                 f'<article class="diag"><h3>{E(d["title"])} {_level_badge(lvl)}</h3>'
-                f'<p>Confidenza: <strong>{E(d["confidence"])}</strong> (qualitativa, non una '
-                f"probabilità). Aggiornata il {E(fmt_ts(d['ts']))}.</p>"
-                "<h4>Segnali a supporto</h4><ul>"
+                "<p>" + tr("Confidenza: {conf} (qualitativa, non una probabilità). "
+                           "Aggiornata il {when}.").format(
+                    conf=f"<strong>{E(tr(d['confidence']))}</strong>",
+                    when=E(fmt_ts(d["ts"]))) + "</p>"
+                "<h4>" + tr("Segnali a supporto") + "</h4><ul>"
                 + "".join(f"<li>{E(s)}</li>" for s in sup) + "</ul>"
-                + ("<h4>Segnali contrari</h4><ul>" + "".join(f"<li>{E(s)}</li>" for s in con)
-                   + "</ul>" if con else "<p>Nessun segnale contrario.</p>")
-                + "<h4>Verifiche suggerite (dalla meno alla più invasiva)</h4><ol>"
-                + "".join(f"<li>{E(a)}</li>" for a in acts) + "</ol></article>")
+                + ("<h4>" + tr("Segnali contrari") + "</h4><ul>"
+                   + "".join(f"<li>{E(s)}</li>" for s in con) + "</ul>" if con
+                   else "<p>" + tr("Nessun segnale contrario.") + "</p>")
+                + "<h4>" + tr("Verifiche suggerite (dalla meno alla più invasiva)")
+                + "</h4><ol>" + "".join(f"<li>{E(a)}</li>" for a in acts) + "</ol></article>")
         return "".join(out)
 
     def alerts(self) -> str:
@@ -274,8 +292,8 @@ class ReportBuilder:
                        "THEN 0 WHEN 'attention' THEN 1 ELSE 2 END, last_ts DESC")
         body = [[_level_badge(r["level"]), E(r["title"]), E(r["message"]),
                  E(fmt_ts(r["first_ts"]))] for r in rows]
-        return _table("Allarmi attivi", ["Livello", "Titolo", "Dettaglio", "Dal"], body,
-                      raw=True)
+        return _table(tr("Allarmi attivi"), [tr("Livello"), tr("Titolo"), tr("Dettaglio"),
+                                             tr("Dal")], body, raw=True)
 
     def _events_for_chart(self, since: int) -> list[tuple[int, str]]:
         return [(r[0], r[1]) for r in self._q(
@@ -291,7 +309,8 @@ class ReportBuilder:
         sigs: dict[int, str] = {}
         for r in self._q("SELECT ts, rule, side, label FROM signals WHERE chart_id=? AND "
                          "segment=? ORDER BY ts", (st["chart_id"], st["segment"])):
-            txt = f"{RULE_TEXT.get(r['rule'], r['rule'])} ({'sopra' if r['side'] == 'upper' else 'sotto'})"
+            side = tr("sopra") if r["side"] == "upper" else tr("sotto")
+            txt = f"{tr(RULE_TEXT.get(r['rule']) or r['rule'])} ({side})"
             if r["label"] != "maintenance":
                 txt += f" [{r['label']}]"
             sigs[r["ts"]] = (sigs[r["ts"]] + "; " + txt) if r["ts"] in sigs else txt
@@ -301,14 +320,16 @@ class ReportBuilder:
         if c is not None and s:
             lines.ucl2, lines.lcl2 = c + 2 * s * widen, c - 2 * s * widen
         d = definition(ind)
-        unit = d.unit if d else ""
+        unit = tr(d.unit) if d else ""
         status = self._chart_status(st)
         cap = caption(ind, regime)
-        title = f"{ind} — {regime} — {'per finestra' if level == 'window' else 'giornaliera'}"
-        desc = (f"Carta I, {len(ts)} punti. Stato: {status}. "
-                + (f"Linea centrale {c:.4g} {unit}, limiti {st['lcl']:.4g}–{st['ucl']:.4g}. "
+        lvl_text = tr("per finestra") if level == "window" else tr("giornaliera")
+        title = f"{ind} — {regime} — {lvl_text}"
+        desc = (tr("Carta I, {n} punti. Stato: {status}. ").format(n=len(ts), status=status)
+                + (tr("Linea centrale {c} {unit}, limiti {lo}–{hi}. ").format(
+                    c=f"{c:.4g}", unit=unit, lo=f"{st['lcl']:.4g}", hi=f"{st['ucl']:.4g}")
                    if c is not None and st["ucl"] is not None else "")
-                + f"Segnali: {len([t for t in ts if t in sigs])}.")
+                + tr("Segnali: {n}.").format(n=len([t for t in ts if t in sigs])))
         events = self._events_for_chart(ts[0] if ts else 0)
         svg_i = chart(Series(ts, vals, st["locked_ts"], {t: v for t, v in sigs.items()}), lines,
                       title, desc, uid, events)
@@ -317,25 +338,27 @@ class ReportBuilder:
             mr = list(moving_ranges(np.array(vals)))
             mr_lines = Lines(st["mr_bar"], st["ucl_mr"], None)
             mr_html = chart(Series(ts[1:], mr, st["locked_ts"]), mr_lines,
-                            f"Range mobili — {title}",
-                            "Carta MR: differenza assoluta tra punti consecutivi; i salti oltre "
-                            "il limite indicano un cambiamento improvviso.", uid + "-mr", events,
-                            height=140)
+                            tr("Range mobili — {title}").format(title=title),
+                            tr("Carta MR: differenza assoluta tra punti consecutivi; i salti "
+                               "oltre il limite indicano un cambiamento improvviso."),
+                            uid + "-mr", events, height=140)
         sig_list = [f"{fmt_ts(t)}: {txt}" for t, txt in sigs.items() if t >= (ts[0] if ts else 0)]
         table_rows = [[fmt_ts(t), f"{v:.5g}", sigs.get(t, "")] for t, v in
                       zip(ts[-100:], vals[-100:], strict=True)]
         return (f'<section class="chartbox" aria-labelledby="h-{uid}"><h3 id="h-{uid}">'
                 f"{E(title)}</h3><p class=\"cap\">{E(cap)}</p>"
-                f"<p>Stato della carta: <strong>{E(status)}</strong>; segmento "
-                f"{st['segment']}; unità: {E(unit)}. Linee: continua = limiti a 3σ, "
-                "tratteggiata = 2σ, punteggiata = linea centrale; triangoli = segnali; zona "
-                "ombreggiata = Fase I.</p>"
-                + svg_i + mr_html
-                + ("<details><summary>Segnali ({})</summary><ul>{}</ul></details>".format(
-                    len(sig_list), "".join(f"<li>{E(x)}</li>" for x in sig_list[-50:]))
-                   if sig_list else "<p>Nessun segnale nel segmento corrente.</p>")
-                + "<details><summary>Tabella dati (ultimi 100 punti)</summary>"
-                + _table(f"Dati di {title}", ["Data", "Valore", "Segnali"], table_rows)
+                "<p>" + tr("Stato della carta: {status}; segmento {seg}; unità: {unit}. Linee: "
+                           "continua = limiti a 3σ, tratteggiata = 2σ, punteggiata = linea "
+                           "centrale; triangoli = segnali; zona ombreggiata = Fase I.").format(
+                    status=f"<strong>{E(status)}</strong>", seg=st["segment"], unit=E(unit))
+                + "</p>" + svg_i + mr_html
+                + ("<details><summary>" + tr("Segnali ({n})").format(n=len(sig_list))
+                   + "</summary><ul>" + "".join(f"<li>{E(x)}</li>" for x in sig_list[-50:])
+                   + "</ul></details>" if sig_list
+                   else "<p>" + tr("Nessun segnale nel segmento corrente.") + "</p>")
+                + "<details><summary>" + tr("Tabella dati (ultimi 100 punti)") + "</summary>"
+                + _table(tr("Dati di {title}").format(title=title),
+                         [tr("Data"), tr("Valore"), tr("Segnali")], table_rows)
                 + "</details></section>")
 
     def charts(self, states: list[dict[str, Any]]) -> str:
@@ -352,9 +375,11 @@ class ReportBuilder:
             other = [(i, st) for i, st in other if (i, st) not in main]
         simple = "".join(self.chart_block(st, f"c{i}") for i, st in main)
         adv = "".join(self.chart_block(st, f"c{i}") for i, st in other)
-        return (f"<h3>Modalità semplice: carte principali</h3>{simple or '<p class=empty>Nessuna carta: copertura insufficiente.</p>'}"
-                f"<details class=\"adv\"><summary>Modalità avanzata: tutte le altre carte "
-                f"({len(other)})</summary>{adv}</details>")
+        none = "<p class=empty>" + tr("Nessuna carta: copertura insufficiente.") + "</p>"
+        return ("<h3>" + tr("Modalità semplice: carte principali") + "</h3>" + (simple or none)
+                + '<details class="adv"><summary>'
+                + tr("Modalità avanzata: tutte le altre carte ({n})").format(n=len(other))
+                + f"</summary>{adv}</details>")
 
     def chart_summary(self, states: list[dict[str, Any]]) -> str:
         rows = []
@@ -362,11 +387,12 @@ class ReportBuilder:
             rows.append([st["indicator"], st["regime"], st["level"], self._chart_status(st),
                          str(st["params"].get("n", 0)), str(st["n_phase1"]),
                          st["params"].get("method", "") or "",
-                         "sì" if st["params"].get("assumptions", {}).get("autocorrelated") else
-                         "no"])
-        return _table("Stato delle carte (segmento corrente)",
-                      ["Indicatore", "Regime", "Livello", "Stato", "Osservazioni", "Fase I (n)",
-                       "Sigma", "Autocorrelata"], rows)
+                         tr("sì") if st["params"].get("assumptions", {}).get("autocorrelated")
+                         else tr("no")])
+        return _table(tr("Stato delle carte (segmento corrente)"),
+                      [tr("Indicatore"), tr("Regime"), tr("Livello"), tr("Stato"),
+                       tr("Osservazioni"), tr("Fase I (n)"), tr("Sigma"), tr("Autocorrelata")],
+                      rows)
 
     def events(self) -> str:
         rows = self._q("SELECT ts, kind, source, note, detail FROM events WHERE ts >= ? AND kind "
@@ -374,8 +400,8 @@ class ReportBuilder:
                        (self.ref_now - 60 * DAY_MS,))
         body = [[fmt_ts(r["ts"]), describe(r["kind"]), r["source"], r["note"] or "",
                  r["detail"] if r["detail"] != "{}" else ""] for r in rows]
-        return _table("Eventi (ultimi 60 giorni)", ["Data", "Evento", "Origine", "Nota",
-                                                    "Dettaglio"], body)
+        return _table(tr("Eventi (ultimi 60 giorni)"),
+                      [tr("Data"), tr("Evento"), tr("Origine"), tr("Nota"), tr("Dettaglio")], body)
 
     def coverage(self) -> str:
         from ..indicators.coverage import weekly_coverage
@@ -389,11 +415,13 @@ class ReportBuilder:
                     "c.name ORDER BY c.name", (self.ref_now - 7 * DAY_MS,))
         qrows = [[r["name"], str(r["n"]), f"{100 * (r['bad'] or 0) / r['n']:.1f}%",
                   fmt_ts(r["last"])] for r in q]
-        return (_table("Finestre valide per regime e settimana (le finestre con throttling non "
-                       "entrano in Rth)", ["Componente", "Regime", "Settimana", "Valide",
-                                           "Con throttling"], rows)
-                + _table("Qualità dei dati (ultimi 7 giorni): minuti con campioni esclusi",
-                         ["Canale", "Minuti", "Con esclusioni", "Ultimo dato"], qrows))
+        return (_table(tr("Finestre valide per regime e settimana (le finestre con throttling "
+                          "non entrano in Rth)"),
+                       [tr("Componente"), tr("Regime"), tr("Settimana"), tr("Valide"),
+                        tr("Con throttling")], rows)
+                + _table(tr("Qualità dei dati (ultimi 7 giorni): minuti con campioni esclusi"),
+                         [tr("Canale"), tr("Minuti"), tr("Con esclusioni"), tr("Ultimo dato")],
+                         qrows))
 
     def effectiveness(self) -> str:
         rows = []
@@ -415,10 +443,10 @@ class ReportBuilder:
                 zpost = (float(np.median(post)) - st["center"]) / st["sigma"]
                 rows.append([fmt_ts(ev["ts"]), describe(ev["kind"]), ind, regime, level,
                              f"{zpre:+.1f}σ", f"{zpost:+.1f}σ", recovery_outcome(zpre, zpost)])
-        return _table("Efficacia della manutenzione: indicatore prima e dopo, rispetto al "
-                      "baseline precedente (unità di σ)",
-                      ["Data", "Intervento", "Indicatore", "Regime", "Livello", "Prima", "Dopo",
-                       "Esito"], rows)
+        return _table(tr("Efficacia della manutenzione: indicatore prima e dopo, rispetto al "
+                         "baseline precedente (unità di σ)"),
+                      [tr("Data"), tr("Intervento"), tr("Indicatore"), tr("Regime"),
+                       tr("Livello"), tr("Prima"), tr("Dopo"), tr("Esito")], rows)
 
     def overhead(self) -> str:
         smp = self.cfg["sampling"]
@@ -431,9 +459,9 @@ class ReportBuilder:
             ).fetchone()
             if r and r[0] is not None:
                 rows.append([ch, f"{r[0]:.2f}", f"{r[1]:.2f}", f"{budget}",
-                             "entro il budget" if r[1] <= budget else "OLTRE il budget"])
-        return _table("Uso di risorse del collector (ultime 24 ore)",
-                      ["Canale", "Media", "Massimo", "Budget", "Esito"], rows)
+                             tr("entro il budget") if r[1] <= budget else tr("OLTRE il budget")])
+        return _table(tr("Uso di risorse del collector (ultime 24 ore)"),
+                      [tr("Canale"), tr("Media"), tr("Massimo"), tr("Budget"), tr("Esito")], rows)
 
     # ---------------------------------------------------------------- page
     def build(self) -> str:
@@ -442,38 +470,43 @@ class ReportBuilder:
         mid = (get_meta(self.conn, "machine_id") or "")[:8]
         first = self.conn.execute("SELECT MIN(ts) FROM agg_1min").fetchone()[0]
         sections = [
-            ("stato", "Stato generale", overall),
-            ("errori", "Errori immediati", self.realtime()),
-            ("ipotesi", "Ipotesi di manutenzione", self.hypotheses()),
-            ("allarmi", "Allarmi", self.alerts()),
-            ("carte", "Carte di controllo", self.chart_summary(states) + self.charts(states)),
-            ("eventi", "Eventi", self.events()),
-            ("copertura", "Copertura e qualità dei dati", self.coverage()),
-            ("efficacia", "Efficacia della manutenzione", self.effectiveness()),
-            ("overhead", "Overhead", self.overhead()),
+            ("stato", tr("Stato generale"), overall),
+            ("errori", tr("Errori immediati"), self.realtime()),
+            ("ipotesi", tr("Ipotesi di manutenzione"), self.hypotheses()),
+            ("allarmi", tr("Allarmi"), self.alerts()),
+            ("carte", tr("Carte di controllo"), self.chart_summary(states) + self.charts(states)),
+            ("eventi", tr("Eventi"), self.events()),
+            ("copertura", tr("Copertura e qualità dei dati"), self.coverage()),
+            ("efficacia", tr("Efficacia della manutenzione"), self.effectiveness()),
+            ("overhead", tr("Overhead"), self.overhead()),
         ]
         nav = "".join(f'<li><a href="#{sid}">{E(t)}</a></li>' for sid, t, _ in sections)
         body = "".join(f'<section id="{sid}" aria-labelledby="h-{sid}"><h2 id="h-{sid}">{E(t)}'
                        f"</h2>{content}</section>" for sid, t, content in sections)
+        lang = get_language()
+        meta = tr("Macchina {mid} · dati dal {first} al {last} · report generato il {now} · "
+                  "HWDrift {version}").format(
+            mid=f"<code>{E(mid)}</code>", first=E(fmt_ts(first)), last=E(fmt_ts(self.last_ts)),
+            now=E(fmt_ts(self.now)), version=E(__version__))
+        warnings = "".join(f"<li>{tr(w)}</li>" for w in (
+            "Non è un avviso di sicurezza né una diagnosi di guasto: le ipotesi hanno una "
+            "confidenza qualitativa e vanno verificate.",
+            "Aprire il PC può invalidare la garanzia; sui portatili seguire le procedure del "
+            "produttore.",
+            "In caso di temperature elevate o spegnimenti, non attendere il tool: intervenire.",
+            "Il tool rileva derive rispetto al baseline della macchina; non stima vita residua "
+            "né probabilità di guasto."))
         return f"""<!doctype html>
-<html lang="it"><head><meta charset="utf-8">
+<html lang="{lang}"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:">
-<title>HWDrift — report</title><style>{CSS}</style></head>
-<body><a class="skip" href="#main">Salta al contenuto</a>
-<header><h1>HWDrift — salute termica di CPU e GPU</h1>
-<p>Macchina <code>{E(mid)}</code> · dati dal {E(fmt_ts(first))} al {E(fmt_ts(self.last_ts))} ·
-report generato il {E(fmt_ts(self.now))} · HWDrift {E(__version__)}</p>
-<nav aria-label="Sezioni del report"><ul>{nav}</ul></nav></header>
+<title>HWDrift — {tr("report")}</title><style>{CSS}</style></head>
+<body><a class="skip" href="#main">{tr("Salta al contenuto")}</a>
+<header><h1>HWDrift — {tr("salute termica di CPU e GPU")}</h1>
+<p>{meta}</p>
+<nav aria-label="{tr("Sezioni del report")}"><ul>{nav}</ul></nav></header>
 <main id="main">{body}</main>
-<footer><h2>Avvertenze</h2><ul>
-<li>Non è un avviso di sicurezza né una diagnosi di guasto: le ipotesi hanno una confidenza
-qualitativa e vanno verificate.</li>
-<li>Aprire il PC può invalidare la garanzia; sui portatili seguire le procedure del
-produttore.</li>
-<li>In caso di temperature elevate o spegnimenti, non attendere il tool: intervenire.</li>
-<li>Il tool rileva derive rispetto al baseline della macchina; non stima vita residua né
-probabilità di guasto.</li></ul></footer></body></html>"""
+<footer><h2>{tr("Avvertenze")}</h2><ul>{warnings}</ul></footer></body></html>"""
 
 
 CSS = """

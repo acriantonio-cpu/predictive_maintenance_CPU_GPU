@@ -1,5 +1,7 @@
 # Audit del codice — HWDrift 0.1.0.dev0
 
+> Copia in inglese: [`en/AUDIT.md`](en/AUDIT.md); i due file vanno tenuti allineati.
+
 Data: 30 settembre 2026. Ambito: tutto il codice in `src/hwdrift`, test, workflow CI,
 configurazione e documentazione, rispetto alla specifica "HWDrift — Specifica di progetto
 e piano di implementazione". Ambiente di verifica: Linux, Python 3.11 e 3.12 (lock
@@ -135,3 +137,39 @@ sono dati (il collector parte all'accesso); l'Avvio rapido di Windows può nasco
 | R13 | Media | La GUI scrive `hwdrift.yaml` modificabile dall'utente: un collector elevato che lo leggesse riaprirebbe THREAT_MODEL T1 | il collector elevato usa un file in cartella protetta con `--config` (avviso nella GUI e nel rifiuto della CLI) |
 | R14 | Bassa | I grafici della GUI non hanno tabella dati equivalente né navigazione da tastiera del canvas (il report HTML sì) | accettato per la v1; la GUI non sostituisce il report accessibile |
 | R15 | Bassa | Il collector elevato e la GUI devono condividere la cartella dati (`LOCALAPPDATA` dello stesso utente); con UAC con credenziali di un altro amministratore le cartelle differiscono | passare `--db`/`HWDRIFT_HOME` espliciti |
+
+---
+
+## 7. Addendum — localizzazione inglese
+
+Richiesta: tradurre la GUI in inglese e creare una copia inglese della documentazione.
+
+### 7.1 Impostazione
+
+- **Catalogo** (`src/hwdrift/i18n.py`, `i18n_en.py`): il testo italiano nel codice è la *chiave*,
+  `tr("...")` restituisce la traduzione inglese con lingua `en` (predefinita) e il testo italiano
+  con `it`. Un testo assente dal catalogo torna in italiano (mai un errore). La lingua si sceglie
+  con `language` in configurazione, sovrascritta dalla variabile d'ambiente `HWDRIFT_LANGUAGE`.
+- **Cosa si traduce**: tutta la GUI, il report HTML, gli allarmi, le ipotesi di diagnosi (titoli,
+  azioni, supporti), notifiche e toast, descrizioni di eventi e indicatori, avvisi dell'analisi e
+  configurazione di esempio (`init-config`). Gli allarmi sono generati dal worker e salvati nel
+  database: nascono nella lingua configurata; un cambio lingua si vede alla prossima analisi.
+- **Cosa non si traduce**: aiuto e messaggi della riga di comando (Typer) e righe di log restano
+  in italiano (limite di ambito voluto: la richiesta riguardava la GUI e ciò che mostra).
+
+### 7.2 Osservazioni
+
+| # | Gravità | Osservazione | Azione |
+|---|---|---|---|
+| L1 | Media | Rischio di buchi silenziosi: una chiave sbagliata mostrerebbe italiano nella GUI inglese | `tests/unit/test_i18n.py` scandisce ogni letterale `tr("…")` nei sorgenti (più testi delle regole di diagnosi, descrizioni di indicatori/eventi, etichette dei campi della GUI) e fallisce se manca una voce; controlla anche che i `{segnaposto}` coincidano tra le lingue |
+| L2 | Bassa | La lingua della GUI deve seguire i contenuti creati dal worker, altrimenti l'analisi pianificata (italiano) e la GUI (inglese) si sovrascriverebbero i testi degli allarmi | una sola lingua per installazione (`language`), applicata da ogni componente alla creazione |
+| L3 | Bassa | I test esistenti verificano testi italiani | la fixture globale dei test gira in italiano (`HWDRIFT_LANGUAGE=it`); i test nuovi (`test_english.py`, test della finestra bilingue) verificano l'inglese, compresa l'assenza di marcatori italiani nel report inglese |
+| L4 | Bassa | Due copie della documentazione possono divergere | `tests/unit/test_docs_sync.py` verifica che ogni documento inglese esista, rimandi al suo originale italiano e abbia lo stesso numero di titoli; CONTRIBUTING impone di aggiornare entrambi |
+
+### 7.3 Rischi residui
+
+| # | Priorità | Rischio | Raccomandazione |
+|---|---|---|---|
+| R16 | Media | Le traduzioni inglesi sono state scritte da uno strumento di AI e non riviste da un madrelingua | far rileggere il catalogo (`i18n_en.py`) e `docs/en/` (vedi AI_USAGE.md) |
+| R17 | Bassa | Messaggi della CLI e log restano in italiano: la scheda log della GUI inglese mostra righe italiane | tradurre i messaggi di log e l'aiuto della CLI se il tool esce dalla cerchia italofona |
+| R18 | Bassa | La lingua dei testi di allarme già salvati cambia solo alla prossima analisi | accettato; eseguire **Analyze now** dopo il cambio lingua |
