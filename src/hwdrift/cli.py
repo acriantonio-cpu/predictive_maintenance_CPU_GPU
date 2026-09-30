@@ -79,7 +79,8 @@ def main_callback(
     state.db = db if db is not None else default_db_path(state.cfg)
     state.db_explicit = db is not None
     state.config_explicit = config is not None
-    _setup_logging(verbose, data_dir(state.cfg) / "hwdrift.log" if db is None else None)
+    # il log sta sempre nella cartella dati: la GUI lo mostra e lo include nel pacchetto
+    _setup_logging(verbose, data_dir(state.cfg) / "hwdrift.log")
 
 
 def _open(readonly: bool = False):
@@ -560,37 +561,88 @@ def init_config(path: Path = typer.Option(Path("hwdrift.yaml"), help="file da cr
     typer.echo(f"Creato {path}")
 
 
-def _tasks(exe: str) -> list[tuple[str, list[str]]]:
-    """``exe`` è già un comando quotato (es. ``"C:\\...\\hwdrift.exe"``).
-    TODO(M5): verificare su Windows 11 il quoting di /TR con percorsi con spazi."""
+TASK_XML = """<?xml version="1.0" encoding="UTF-16"?>
+<Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <Triggers>{trigger}</Triggers>
+  <Principals><Principal id="Author"><LogonType>InteractiveToken</LogonType>
+    <RunLevel>{runlevel}</RunLevel></Principal></Principals>
+  <Settings>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
+    <StartWhenAvailable>true</StartWhenAvailable>
+    <RestartOnFailure><Interval>PT1M</Interval><Count>999</Count></RestartOnFailure>
+    <Enabled>true</Enabled>
+  </Settings>
+  <Actions Context="Author"><Exec><Command>{command}</Command>
+    <Arguments>{arguments}</Arguments></Exec></Actions>
+</Task>
+"""
+LOGON = "<LogonTrigger><Enabled>true</Enabled></LogonTrigger>"
+EVERY15 = ("<TimeTrigger><Repetition><Interval>PT15M</Interval><StopAtDurationEnd>false"
+           "</StopAtDurationEnd></Repetition><StartBoundary>2026-01-01T00:00:00</StartBoundary>"
+           "<Enabled>true</Enabled></TimeTrigger>")
+
+
+def task_definitions(command: str, prefix_args: str = "") -> list[tuple[str, str, str]]:
+    """(nome attività, XML, descrizione). Le impostazioni predefinite di ``schtasks /Create``
+    fermano le attività dopo 72 ore e non le avviano a batteria (portatili): qui le
+    disattiviamo e riavviamo l'attività se termina. ``command`` è il percorso dell'eseguibile."""
+    from xml.sax.saxutils import escape
+
+    def xml(trigger: str, runlevel: str, args: str) -> str:
+        return TASK_XML.format(trigger=trigger, runlevel=runlevel, command=escape(command),
+                               arguments=escape(f"{prefix_args} {args}".strip()))
+
     return [
-        ("HWDrift Collector", ["schtasks", "/Create", "/F", "/TN", r"HWDrift\Collector",
-                               "/SC", "ONLOGON", "/RL", "HIGHEST", "/TR", f"{exe} run"]),
-        ("HWDrift Analisi", ["schtasks", "/Create", "/F", "/TN", r"HWDrift\Analyze",
-                             "/SC", "MINUTE", "/MO", "15", "/TR", f"{exe} analyze"]),
-        ("HWDrift Notificatore", ["schtasks", "/Create", "/F", "/TN", r"HWDrift\Notify",
-                                  "/SC", "ONLOGON", "/TR", f"{exe} notify"]),
+        (r"HWDrift\Collector", xml(LOGON, "HighestAvailable", "run"),
+         "collector, all'accesso, privilegi elevati"),
+        (r"HWDrift\Analyze", xml(EVERY15, "LeastPrivilege", "analyze"),
+         "analisi ogni 15 minuti, privilegi normali"),
+        (r"HWDrift\Notify", xml(LOGON, "LeastPrivilege", "notify"),
+         "notificatore, all'accesso, privilegi normali"),
     ]
 
 
 @schedule_app.command("install")
 def schedule_install(apply: bool = typer.Option(False, help="crea davvero le attività "
-                                                            "(default: mostra i comandi)")) -> None:
+                                                            "(default: mostra cosa farebbe)")
+                     ) -> None:
     """Attività pianificate: collector all'accesso (privilegi elevati), analisi ogni 15
-    minuti e notificatore all'accesso (senza privilegi)."""
+    minuti e notificatore all'accesso (senza privilegi). Nessun limite di 72 ore, parte anche
+    a batteria, si riavvia se termina."""
+    import os
     import shutil
     import subprocess
+    import tempfile
 
     found = shutil.which("hwdrift")
-    exe = f'"{found}"' if found else f'"{sys.executable}" -m hwdrift'
-    for name, cmd in _tasks(exe):
-        typer.echo(f"{name}: {' '.join(cmd)}")
-        if apply:
-            if sys.platform != "win32":
-                typer.echo("  (solo su Windows)")
-                continue
-            r = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    frozen = getattr(sys, "frozen", False)
+    if frozen:
+        command, prefix = sys.executable, ""
+    elif found:
+        command, prefix = found, ""
+    else:
+        command, prefix = sys.executable, "-m hwdrift"
+    for name, xml, desc in task_definitions(command, prefix):
+        typer.echo(f"{name}: {desc}")
+        if not apply:
+            continue
+        if sys.platform != "win32":
+            typer.echo("  (solo su Windows)")
+            continue
+        fd, tmp = tempfile.mkstemp(suffix=".xml")
+        try:
+            with os.fdopen(fd, "w", encoding="utf-16") as fh:
+                fh.write(xml)
+            r = subprocess.run(["schtasks", "/Create", "/F", "/TN", name, "/XML", tmp],
+                               capture_output=True, text=True, check=False)
             typer.echo("  ok" if r.returncode == 0 else f"  errore: {r.stderr.strip()}")
+        finally:
+            os.unlink(tmp)
+    if not apply:
+        typer.echo("\nAggiungi --apply (terminale amministratore) per crearle.")
 
 
 @schedule_app.command("remove")

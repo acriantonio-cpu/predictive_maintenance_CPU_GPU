@@ -42,6 +42,10 @@ Versione 0.1 — da rivedere prima di ogni release e dopo ogni nuova sorgente di
 | T10 | Database scrivibile da altri utenti locali (falsificazione dei dati) | ACL della cartella dati limitate all'utente e agli amministratori | da verificare in M5 |
 | T11 | *Supply chain* | dipendenze bloccate con hash (`requirements/*.lock`), SBOM CycloneDX, release firmate con Sigstore, controllo licenze in CI | workflow `ci.yml`, `release.yml` |
 
+| T12 | *Tampering* via GUI: la GUI (utente normale) scrive `hwdrift.yaml` nella cartella dati dell'utente; un collector elevato che lo leggesse eseguirebbe percorsi scelti da un non amministratore | il collector elevato rifiuta la configurazione implicita dalla cartella corrente e la documentazione impone `--config` su un file in cartella protetta; la GUI non espone il percorso di `smartctl` né altri eseguibili | `test_elevated_collector_refuses_cwd_config`, revisione |
+| T13 | *DoS* locale: file `stop.request` e `live.active` nella cartella dati permettono a un processo dell'utente di fermare il collector o farlo scrivere ogni secondo | accettato: lo stesso utente può già terminare il processo; `live.json` è di pochi KB e si scrive solo con `live.active` recente (< 10 s) | revisione |
+| T14 | Esecuzione di codice tramite l'eseguibile della GUI avviato come amministratore (UAC) | l'elevazione avviene solo su pulsante esplicito; l'eseguibile si distribuisce con hash e firma Sigstore | documentazione |
+
 ## Rischi residui
 
 - Il collector elevato importa moduli Python dall'ambiente virtuale: se la cartella del

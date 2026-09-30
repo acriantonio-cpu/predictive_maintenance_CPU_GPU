@@ -77,8 +77,11 @@ class Notifier:
         self.show = show
         self.sent: list[tuple[str, str]] = []
         self.started_ms = now_ms()
+        self._dry = False
 
     def _notify(self, title: str, body: str) -> None:
+        if self._dry:  # ``hwdrift status``: nessun toast, nessun log di "notifica"
+            return
         self.sent.append((title, body))
         if self.cfg["alerts"]["toast"]:
             ok = self.show(title, body)
@@ -93,6 +96,7 @@ class Notifier:
         if not persist:
             saved, show, sent = json.loads(json.dumps(self.state)), self.show, list(self.sent)
             self.show = lambda t, b: True
+            self._dry = True
             try:
                 conn = connect(self.db, readonly=True)
                 try:
@@ -100,6 +104,7 @@ class Notifier:
                 finally:
                     conn.close()
             finally:
+                self._dry = False
                 self.state, self.show, self.sent = saved, show, sent
         try:
             conn = connect(self.db, readonly=True)

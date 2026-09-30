@@ -245,7 +245,10 @@ def load_config(path: str | os.PathLike[str] | None = None) -> dict[str, Any]:
 
 
 def data_dir(cfg: dict[str, Any]) -> Path:
-    d = Path(cfg["data_dir"]) if cfg.get("data_dir") else default_data_dir()
+    """Cartella dati. ``HWDRIFT_HOME`` (override esplicito, usato anche dalla modalità demo
+    della GUI) prevale su ``data_dir`` della configurazione."""
+    env = os.environ.get("HWDRIFT_HOME")
+    d = Path(env) if env else Path(cfg["data_dir"]) if cfg.get("data_dir") else default_data_dir()
     d.mkdir(parents=True, exist_ok=True)
     return d
 

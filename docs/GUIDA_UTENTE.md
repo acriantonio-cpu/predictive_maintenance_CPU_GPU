@@ -23,6 +23,8 @@ guasto e non tocca mai l'hardware (niente curve ventola, niente limiti di potenz
 4. [Prova senza hardware (simulatore)](#4-prova-senza-hardware-simulatore)
 5. [Primo avvio sul tuo PC (Windows 11)](#5-primo-avvio-sul-tuo-pc-windows-11)
 6. [Esecuzione in background](#6-esecuzione-in-background)
+   - [6A. Interfaccia grafica (`hwdrift-gui.exe`)](#6a-interfaccia-grafica-hwdrift-guiexe)
+   - [6B. Spegnimento, riavvio e sospensione del PC](#6b-spegnimento-riavvio-e-sospensione-del-pc)
 7. [Leggere il report](#7-leggere-il-report)
 8. [Registrare le manutenzioni](#8-registrare-le-manutenzioni)
 9. [Baseline: quando rifarlo](#9-baseline-quando-rifarlo)
@@ -224,6 +226,8 @@ hwdrift baseline start --state clean   # oppure --state unknown se non hai pulit
 hwdrift run                            # in un terminale amministratore; Ctrl+C per fermare
 ```
 
+> Preferisci una finestra? Dopo il passo 3 puoi fare tutto dalla GUI: vedi la sezione 6A.
+
 ### Passo 6 — Usa il PC normalmente per almeno 5 giorni (e un mese per le carte giornaliere)
 
 La Fase I si chiude da sola quando ogni carta ha almeno 25 osservazioni, in 5 giorni
@@ -263,6 +267,82 @@ Il collector registra da solo i **gap** (sospensione, ibernazione, spegnimento) 
 **riavvii**; il notificatore avvisa se il collector è fermo da più di 5 minuti mentre
 il PC è acceso. In modalità **game-safe** (processi anti-cheat in lista) le sorgenti
 a basso livello si sospendono e restano NVML ed Event Log.
+
+---
+
+## 6A. Interfaccia grafica (`hwdrift-gui.exe`)
+
+Un'unica finestra per vedere cosa succede **in tempo reale**, leggere lo stato, gestire la
+configurazione e salvare log e dati. Non legge i sensori: mostra ciò che il collector
+pubblica, quindi il collector deve essere in esecuzione (la finestra lo può avviare).
+
+**Come ottenerla.**
+- *Eseguibile*: la pipeline GitHub "Build exe" (`.github/workflows/build-exe.yml`) produce
+  `hwdrift-gui.exe` come artefatto (e nelle release, con hash SHA-256 e firma Sigstore). In
+  locale, su Windows: `pwsh packaging\build_exe.ps1` → `dist\hwdrift-gui.exe`.
+  L'eseguibile **non è firmato con un certificato di Windows**: alla prima apertura
+  SmartScreen può mostrare "Windows ha protetto il PC" → *Ulteriori informazioni* →
+  *Esegui comunque* (verifica prima l'hash).
+- *Da sorgente*: `hwdrift-gui` (installato con il pacchetto) oppure `python -m hwdrift.gui`.
+  Serve Tk, incluso nell'installer di Python per Windows.
+
+L'eseguibile è anche la CLI: `hwdrift-gui.exe run`, `hwdrift-gui.exe analyze`, ... funzionano
+uguale (e `hwdrift schedule install` registra proprio quell'eseguibile).
+Opzioni: `--config file.yaml`, `--db file.sqlite`.
+
+**Schede.**
+
+| Scheda | Cosa offre |
+|---|---|
+| **Tempo reale** | sei valori grandi (temperature, potenze, ventole) e otto grafici che scorrono ogni secondo: temperatura CPU e GPU, potenze, ventole, carico, clock, throttling. Finestra da 5 a 60 minuti. Avviso rosso se un episodio di throttling o una ventola ferma è in corso. All'apertura i grafici si riempiono con la storia recente del database |
+| **Stato e ipotesi** | il semaforo per CPU, GPU, raffreddamento e dischi; allarmi attivi; ipotesi con segnali a supporto/contrari e verifiche. Pulsanti **Analizza ora** (in background, rigenera il report) e **Apri il report HTML** |
+| **Carte di controllo** | sceglie una carta e mostra la carta I e quella dei range mobili con limiti, Fase I, segnali (triangoli) e manutenzioni |
+| **Eventi e manutenzioni** | elenco degli eventi e modulo per registrare pulizie, ripaste, cambi ventola, profili |
+| **Configurazione** | modulo con le impostazioni principali (intervallo, sorgenti, riferimento, limiti, regimi, notifiche, game-safe) e, nella scheda *YAML avanzato*, il file completo. Ogni salvataggio viene **validato**: una configurazione non valida non sostituisce mai quella buona, e resta una copia `.bak`. I commenti del file si perdono se si salva dal modulo |
+| **Log e dati** | log in tempo reale; **Salva log…**, **Pacchetto diagnostico (.zip)** (log, stato, configurazione, versioni; *non* il database), **Salva report HTML…**, **Esporta i dati** (CSV, JSONL, Parquet, Prometheus, OTLP; anonimo per default), **Apri cartella dati** |
+
+**Barra in alto.**
+- **▶ Avvia collector**: lo avvia senza privilegi elevati (alcuni sensori a basso livello
+  potrebbero mancare; LibreHardwareMonitor in modalità web non ne ha bisogno).
+- **▶ Avvia come amministratore** (Windows): richiesta UAC; il collector elevato vede tutti i
+  sensori.
+- **■ Ferma**: arresto pulito (scrive i dati in sospeso). Funziona anche per un collector già
+  attivo come attività pianificata.
+- **Demo (dati simulati)**: 30 giorni simulati con accumulo di polvere più un collector
+  simulato in tempo reale, in una cartella separata (`demo`). Non tocca il database reale;
+  serve a vedere come appare il tool. Un banner rosso ricorda che i dati sono finti.
+
+Come funziona il tempo reale: la finestra aggiorna ogni 2 secondi il file `live.active`;
+finché è recente il collector scrive ogni secondo i valori in `live.json` (pochi KB). Chiusa
+la finestra, il collector smette di scriverlo. Alla chiusura la GUI chiede se fermare il
+collector avviato da lei.
+
+**Attenzione alla configurazione e ai privilegi.** La GUI scrive `hwdrift.yaml` nella tua
+cartella dati, che è modificabile dal tuo utente. Un collector **elevato** non deve leggere
+una configurazione modificabile da un utente non amministratore (vedi `SECURITY.md`): se lo
+usi, tieni una copia del file in una cartella protetta e passala con `--config`.
+
+---
+
+## 6B. Spegnimento, riavvio e sospensione del PC
+
+Spegnere e riaccendere il PC **non è un problema**: il tool lo gestisce e lo registra, non lo
+scambia per un guasto e non perde il baseline. Nel dettaglio:
+
+| Situazione | Cosa succede |
+|---|---|
+| **Spegnimento o riavvio normale** | il collector si ferma; si può perdere l'ultimo minuto o poco più di dati grezzi (la scrittura avviene ogni 60 s). Il database (SQLite WAL) resta integro anche con corrente staccata |
+| **Riaccensione** | il collector riparte **all'accesso** a Windows (non all'avvio): tra l'accensione e l'accesso non ci sono dati. All'avvio registra un evento `system.collector_start`, un `system.gap` (intervallo senza dati) e, se l'avvio di Windows è cambiato, un `system.reboot` |
+| **Episodio in corso allo spegnimento** (es. throttling) | all'avvio successivo viene chiuso all'ultimo istante in cui il collector era vivo: non resta "in corso" per sempre |
+| **Carte di controllo** | le finestre che contengono un gap, un riavvio o un avvio del collector vengono scartate; baseline e limiti **non** cambiano. Nessun allarme di manutenzione per uno spegnimento |
+| **Sospensione / ibernazione** | alla ripresa il collector rileva il salto dell'orologio, registra il gap e chiude gli episodi aperti |
+| **Avvio rapido di Windows 11** | lo spegnimento "ibrido" può non cambiare l'ora di avvio, quindi il `system.reboot` può mancare; il **gap** viene registrato lo stesso dal battito (heartbeat) |
+| **Spegnimento forzato** (tasto di accensione, corrente) | Windows registra Kernel-Power 41: HWDrift lo conta nell'indicatore `unexpected_shutdown` (carta c). Uno spegnimento normale non lo genera |
+| **Portatile a batteria** | le attività create da `hwdrift schedule install` partono anche a batteria, non hanno il limite di 72 ore di Windows e si riavviano se terminano |
+
+Per un arresto pulito usa **■ Ferma** nella GUI o `Ctrl+C` nel terminale: scrive anche i dati
+in sospeso. Limite noto: questi comportamenti sono verificati con test a orologio simulato (spegnimento
+brusco, riavvio, sospensione), **non ancora su un PC Windows** (vedi `docs/AUDIT.md`, R1).
 
 ---
 
@@ -421,6 +501,8 @@ configurazione).
 | Report: "Dati non aggiornati" | Il collector è fermo: `hwdrift status`, controlla l'attività pianificata |
 | Una sorgente manca dagli indicatori | `hwdrift status` e la sezione *Sorgenti di dati* del report mostrano quali sorgenti non sono partite e perché |
 | `Rifiutato: con privilegi elevati la configurazione va indicata esplicitamente` | Con il terminale amministratore passa il file con `--config` (misura di sicurezza) |
+| La GUI mostra "In attesa del collector…" | Il collector non è in esecuzione: usa **▶ Avvia collector** o controlla l'attività pianificata |
+| La GUI non si apre da sorgente (`No module named tkinter`) | Reinstalla Python includendo *tcl/tk and IDLE* (installer di Windows) o, su Linux, `python3-tk` |
 | Toast non visibili | Focus Assist o gioco a schermo intero: lo stato resta nel report e in `status.json` |
 | Troppi allarmi | Il budget mensile li sospende; rivedi `spc`/`alerts` e le regole in `diagnosis/rules/default.yaml` |
 | `Errore di configurazione: chiave sconosciuta` | Refuso in `hwdrift.yaml`: il messaggio indica la chiave |
@@ -449,6 +531,7 @@ comando per il dettaglio.
 | `hwdrift status` | collector, episodi in corso, allarmi attivi |
 | `hwdrift schedule install / remove` | attività pianificate di Windows |
 | `hwdrift init-config` | crea `hwdrift.yaml` di esempio |
+| `hwdrift-gui` / `hwdrift-gui.exe` | interfaccia grafica (con un comando della tabella funziona come la CLI) |
 
 Opzioni globali: `--config FILE`, `--db FILE`, `-v`.
 

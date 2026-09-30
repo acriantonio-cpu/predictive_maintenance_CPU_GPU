@@ -14,6 +14,9 @@ cloud, nessun account, nessuna connessione di rete di default.
 - Non modifica mai l'hardware (curve ventola, limiti di potenza).
 
 > **Guida passo passo (come funziona e come farlo partire): [docs/GUIDA_UTENTE.md](docs/GUIDA_UTENTE.md)**
+>
+> **Interfaccia grafica** (`hwdrift-gui.exe`): grafici in tempo reale, stato, carte, eventi,
+> configurazione e salvataggio di log e dati — vedi la sezione 6A della guida.
 
 ## Avvio rapido
 
@@ -57,7 +60,9 @@ src/hwdrift/
 ├── alerts/       politica di allarme, toast, notificatore
 ├── reporting/    report HTML accessibile (SVG, nessuno script)
 ├── sim/          modello termico sintetico e scenari di guasto
+├── gui/          interfaccia grafica (tkinter): data.py (testabile senza Tk), widgets, app
 ├── healthcheck.py, selftest.py, runner.py, cli.py
+packaging/        PyInstaller (hwdrift-gui.spec, build_exe.ps1) · .github/workflows/build-exe.yml
 ```
 
 ## Documentazione

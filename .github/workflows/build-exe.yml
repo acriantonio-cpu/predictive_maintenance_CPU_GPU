@@ -1,0 +1,51 @@
+# SPDX-License-Identifier: Apache-2.0
+# Costruisce hwdrift-gui.exe su Windows e lo pubblica come artefatto (e nelle release).
+name: Build exe
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: write
+  id-token: write
+jobs:
+  exe:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Dipendenze bloccate (hash) + sorgenti Windows opzionali
+        run: |
+          python -m pip install --upgrade pip
+          pip install --require-hashes -r requirements/dev.lock
+          pip install --no-deps -e .
+          pip install pywin32 nvidia-ml-py
+      - name: Test (GUI inclusa: il runner Windows ha una sessione grafica)
+        run: pytest -m "not hardware" -q
+      - name: Build
+        run: pwsh packaging/build_exe.ps1
+      - name: Prova dell'eseguibile (CLI dentro l'exe)
+        run: |
+          dist\hwdrift-gui.exe version
+          dist\hwdrift-gui.exe --db smoke.sqlite simulate healthy --days 6
+          dist\hwdrift-gui.exe --db smoke.sqlite analyze --no-report
+          dist\hwdrift-gui.exe --db smoke.sqlite status
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hwdrift-gui-windows
+          path: |
+            dist/hwdrift-gui.exe
+            dist/hwdrift-gui.exe.sha256
+      - uses: sigstore/gh-action-sigstore-python@v3.0.0
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          inputs: dist/hwdrift-gui.exe
+      - uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: |
+            dist/hwdrift-gui.exe
+            dist/hwdrift-gui.exe.sha256
+            dist/hwdrift-gui.exe.sigstore.json

@@ -27,8 +27,14 @@ jobs:
         run: ruff check src tests
       - name: Type check
         run: pyright
+      - name: Display virtuale per i test della GUI (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y python3-tk xvfb
       - name: Test (solo simulatore, niente hardware)
-        run: pytest -m "not hardware" --cov=hwdrift --cov-report=term
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "Linux" ]; then xvfb-run -a pytest -m "not hardware" --cov=hwdrift --cov-report=term
+          else pytest -m "not hardware" --cov=hwdrift --cov-report=term; fi
       - name: Il nucleo non importa moduli Windows; il collector non importa numpy
         run: pytest tests/unit/test_portability.py -q
       - name: Selftest di overhead (simulatore)

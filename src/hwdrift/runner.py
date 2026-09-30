@@ -26,13 +26,12 @@ import sqlite3
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any
 
 import psutil
 
 from .collectors.base import Collector, CollectorUnavailable, build_collectors
-from .config import default_data_dir
+from .config import data_dir
 from .model import EventRecord, Quality, Sample
 from .quality.realtime_events import RealtimeConfig, RealtimeDetector
 from .quality.sanity import QualityChecker
@@ -90,8 +89,10 @@ class Runner:
         self._last_wall: int | None = None
         self._last_mono: float | None = None
         self.ticks = 0
-        ddir = Path(cfg["data_dir"]) if cfg.get("data_dir") else default_data_dir()
+        ddir = data_dir(cfg)
         self.hc_request = ddir / "healthcheck.active"
+        self.live_request = ddir / "live.active"  # la GUI lo aggiorna ogni pochi secondi
+        self.stop_request = ddir / "stop.request"
         self.live_path = ddir / "live.json"
         self._hc_active = False
         self._last_hc_check = -1e9
@@ -131,6 +132,12 @@ class Runner:
         if hb is not None and now - int(hb) > 3 * self.cfg["sampling"]["flush_s"] * 1000:
             self.writer.add_event(EventRecord(int(hb), "system.gap",
                                               detail={"end_ts": now, "reason": "collector fermo"}))
+        # episodi lasciati "in corso" da un arresto brusco (spegnimento, crash, kill):
+        # si chiudono all'ultimo istante in cui il collector era vivo
+        last_alive = int(hb) if hb is not None else now
+        with self.conn:
+            self.conn.execute("UPDATE rt_events SET end_ts=MAX(start_ts, ?) WHERE end_ts IS NULL",
+                              (min(last_alive, now),))
         self.writer.add_event(EventRecord(now, "system.collector_start",
                                           detail={"interval_s": self.interval}))
         with self.conn:
@@ -211,10 +218,21 @@ class Runner:
                 mk("hwdrift.game_safe", 1.0 if self.game_safe else 0.0, "flag")]
 
     def _publish_live(self, latest: dict[str, float], mono: float, ts: int) -> None:
-        """Durante un health-check pubblica gli ultimi valori (lettura di sicurezza)."""
+        """Pubblica gli ultimi valori in ``live.json`` solo quando serve: durante un
+        health-check (lettura di sicurezza) o finché una GUI li sta guardando (il suo file
+        ``live.active`` è stato toccato negli ultimi 10 s). Controlla anche la richiesta di
+        arresto pulito (``stop.request``)."""
         if mono - self._last_hc_check >= 2.0:
             self._last_hc_check = mono
-            self._hc_active = self.hc_request.exists()
+            wanted = self.hc_request.exists()
+            with contextlib.suppress(OSError):
+                wanted = wanted or time.time() - self.live_request.stat().st_mtime < 10.0
+            self._hc_active = wanted
+            if self.stop_request.exists():
+                with contextlib.suppress(OSError):
+                    self.stop_request.unlink()
+                log.info("arresto richiesto (stop.request)")
+                self._stop = True
         if not self._hc_active:
             return
         try:

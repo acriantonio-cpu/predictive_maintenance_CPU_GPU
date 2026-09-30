@@ -5,6 +5,15 @@ Formato: [Keep a Changelog](https://keepachangelog.com/it/1.1.0/); versionamento
 ## [Non rilasciato] — 0.1.0.dev0
 
 ### Aggiunto
+- Interfaccia grafica `hwdrift-gui` (tkinter, nessuna dipendenza nuova): grafici in tempo reale,
+  stato e ipotesi, carte di controllo, eventi e manutenzioni, configurazione (modulo + YAML
+  validato), log, pacchetto diagnostico, esportazione; avvio/arresto del collector anche
+  elevato (UAC) e modalità demo. Eseguibile con PyInstaller (`packaging/`, workflow
+  `build-exe.yml`); lo stesso eseguibile accetta i comandi della CLI.
+- Il collector pubblica `live.json` solo mentre una GUI è aperta (`live.active`) e si ferma con
+  `stop.request`.
+- Riavvio/spegnimento: gli episodi lasciati "in corso" vengono chiusi all'avvio; le attività
+  pianificate usano un XML senza limite di 72 ore e senza blocco a batteria.
 - M1: interfaccia `Collector`, `Sample`, canali canonici e auto-discovery; collector
   LibreHardwareMonitor (server web su loopback o DLL con pythonnet), NVML, Registro eventi
   (`wevtutil`), contatori di prestazione, psutil, informazioni di sistema (driver/BIOS come

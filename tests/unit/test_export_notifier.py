@@ -163,6 +163,7 @@ def test_status_does_not_consume_notifications(conn, tmp_path, cfg):
     n = Notifier(db, tmp_path, cfg)
     st = n.check(2000, persist=False)
     assert st["ongoing"] and n.sent == [] and not (tmp_path / "notifier_state.json").exists()
+    assert n.sent == []
     n2 = Notifier(db, tmp_path, cfg)
     n2.check(3000)
     assert any("throttling" in s for s in _titles(n2))

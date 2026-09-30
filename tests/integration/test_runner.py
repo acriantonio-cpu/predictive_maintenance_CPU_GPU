@@ -174,3 +174,35 @@ def test_unavailable_source_is_recorded(cfg, conn):
     st = {s["name"]: s for s in json.loads(get_meta(conn, "collectors_status"))}
     assert not st["lhm"]["started"] and "LHM" in st["lhm"]["last_error"]
     assert st["dummy"]["ok"]
+
+
+def test_reboot_closes_orphan_episodes_and_records_gap_and_reboot(cfg, tmp_path):
+    """Spegnimento brusco durante un throttling: al riavvio nessun episodio resta "in corso"."""
+    from hwdrift.storage.schema import open_db
+
+    db = tmp_path / "reboot.sqlite"
+    c1 = open_db(db)
+    clock = FakeClock()
+    r1 = Runner(cfg, c1, [sim("throttle", fault_after=5)], clock)
+    r1._startup_events()
+    for _ in range(200):
+        r1.tick()
+        clock.t += 1
+    assert c1.execute("SELECT COUNT(*) FROM rt_events WHERE end_ts IS NULL").fetchone()[0] >= 1
+    last_alive = clock.wall_ms()
+    # niente shutdown(): corrente staccata. Dieci ore dopo il PC riparte.
+    c2 = open_db(db)
+    clock2 = FakeClock(clock.start + 10 * 3_600_000)
+    r2 = Runner(cfg, c2, [sim("healthy")], clock2)
+    r2._startup_events()
+    for _ in range(70):
+        r2.tick()
+        clock2.t += 1
+    r2.shutdown()
+    assert c2.execute("SELECT COUNT(*) FROM rt_events WHERE end_ts IS NULL").fetchone()[0] == 0
+    assert c2.execute("SELECT MAX(end_ts) FROM rt_events").fetchone()[0] <= last_alive
+    kinds = [r[0] for r in c2.execute("SELECT kind FROM events")]
+    assert kinds.count("system.collector_start") == 2
+    assert "system.gap" in kinds
+    # dati dopo il riavvio scritti regolarmente, sullo stesso database
+    assert c2.execute("SELECT COUNT(*) FROM agg_1min").fetchone()[0] > 0

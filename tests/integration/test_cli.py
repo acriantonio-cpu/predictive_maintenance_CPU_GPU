@@ -91,8 +91,7 @@ def test_run_with_simulator_and_schedule_dry_run(env):
     assert r.exit_code == 0, r.output
     assert "simulator" in r.output
     r = invoke("schedule", "install")
-    assert "schtasks" in r.output and "/RL HIGHEST" in r.output
-    assert "ONLOGON" in invoke("schedule", "install").output
+    assert "Collector" in r.output and "Analyze" in r.output and "--apply" in r.output
     r = invoke("healthcheck")
     assert r.exit_code == 1 and "--yes" in r.output
 
@@ -117,3 +116,35 @@ def test_elevated_collector_refuses_cwd_config(env, monkeypatch):
     monkeypatch.setattr(cli, "is_elevated", lambda: True)
     r = CliRunner().invoke(app, ["run", "--max-seconds", "1"])
     assert r.exit_code == 2 and "--config" in r.output
+
+
+def test_task_xml_is_valid_and_survives_laptop_and_72h_defaults():
+    """Le impostazioni predefinite di schtasks fermano il collector dopo 72 h e non lo
+    avviano a batteria: l'XML le disattiva."""
+    import xml.etree.ElementTree as ET
+
+    from hwdrift.cli import task_definitions
+
+    defs = task_definitions(r"C:\Program Files\HWDrift & Co\hwdrift.exe", "-m hwdrift")
+    assert [d[0] for d in defs] == [r"HWDrift\Collector", r"HWDrift\Analyze", r"HWDrift\Notify"]
+    ns = {"t": "http://schemas.microsoft.com/windows/2004/02/mit/task"}
+    for name, xml, _ in defs:
+        root = ET.fromstring(xml.split("?>", 1)[1])
+        st = root.find("t:Settings", ns)
+        assert st.find("t:ExecutionTimeLimit", ns).text == "PT0S"
+        assert st.find("t:DisallowStartIfOnBatteries", ns).text == "false"
+        assert st.find("t:StopIfGoingOnBatteries", ns).text == "false"
+        assert st.find("t:RestartOnFailure", ns) is not None
+        assert "& Co" in root.find("t:Actions/t:Exec/t:Command", ns).text  # escape corretto
+    run_levels = {n: ET.fromstring(x.split("?>", 1)[1]).find(
+        "t:Principals/t:Principal/t:RunLevel", ns).text for n, x, _ in defs}
+    assert run_levels[r"HWDrift\Collector"] == "HighestAvailable"
+    assert run_levels[r"HWDrift\Notify"] == "LeastPrivilege"
+
+
+def test_status_is_quiet_and_does_not_log_notifications(env):
+    db = str(env / "q.sqlite")
+    invoke("--db", db, "simulate", "dust", "--days", "24")
+    invoke("--db", db, "analyze", "--no-report")
+    r = invoke("--db", db, "status")
+    assert "NOTIFICA" not in r.output and "ACTION" in r.output

@@ -89,3 +89,49 @@ installato in un ambiente pulito), simulatore; **nessun hardware Windows reale**
 | Health-check con interruzione di sicurezza, selftest di overhead | ✔ |
 | Documenti di governance, sicurezza, AI, CI Windows, lock con hash, SBOM, firma | ✔ (workflow da eseguire su GitHub) |
 | Validazione Fasi 0–5 | ⏳ solo controlli di coerenza sul simulatore |
+
+---
+
+## 6. Addendum — riavvio del PC e interfaccia grafica
+
+Richiesta: verificare cosa succede spegnendo e riaccendendo il PC, e aggiungere una GUI.
+
+### 6.1 Problemi trovati e corretti
+
+| # | Gravità | Problema | Correzione | Test di regressione |
+|---|---|---|---|---|
+| A22 | **Alta** | Uno spegnimento durante un episodio di throttling lasciava l'episodio "in corso" per sempre (report e stato continuavano a mostrare un'emergenza inesistente) | all'avvio del collector gli episodi aperti vengono chiusi all'ultimo battito noto | `test_reboot_closes_orphan_episodes_and_records_gap_and_reboot` |
+| A23 | **Alta** (portatili) | `schtasks /Create` applica di default "non avviare a batteria", "ferma se passa a batteria" e "ferma dopo 72 ore": il collector non sarebbe partito a batteria e si sarebbe fermato dopo tre giorni | attività definite con XML: nessun limite di tempo, partenza a batteria, riavvio automatico se termina | `test_task_xml_is_valid_and_survives_laptop_and_72h_defaults` |
+| A24 | Bassa | `hwdrift status` stampava righe "NOTIFICA" (rumore) | modalità silenziosa | `test_status_is_quiet_and_does_not_log_notifications` |
+| A25 | Bassa | Con `--db` esplicito il collector non scriveva il log su file: la scheda log della GUI e il pacchetto diagnostico sarebbero stati vuoti | il log va sempre nella cartella dati | prova con la GUI |
+| A26 | Bassa | `HWDRIFT_HOME` non prevaleva su `data_dir` della configurazione: la demo della GUI avrebbe potuto scrivere nella cartella reale | l'override esplicito di ambiente ha la precedenza | `test_window_shows_status_charts_events_and_saves_config` |
+
+### 6.2 Cosa succede a un riavvio (verificato con orologio simulato)
+
+Spegnimento brusco → riavvio dopo 10 ore: nessun episodio orfano, un `system.gap`, due
+`system.collector_start`, dati regolari dopo il riavvio, baseline invariato. Limiti
+residui: si perdono fino a ~60 s di dati grezzi; tra accensione e accesso a Windows non ci
+sono dati (il collector parte all'accesso); l'Avvio rapido di Windows può nascondere il
+`system.reboot`, ma il gap è registrato dal battito.
+
+### 6.3 GUI — controlli
+
+- Livello dati (`gui/data.py`, senza Tk): 9 test unitari; finestra reale: test di integrazione
+  sotto Xvfb (stato, carte, tempo reale da `live.json`, registrazione eventi, salvataggio
+  configurazione valida e rifiuto di una non valida, analisi in background, pacchetto
+  diagnostico, chiusura). Il test si salta se non c'è un display.
+- Revisione visiva (screenshot): corretti layout del modulo di configurazione (campi tagliati),
+  legenda sovrapposta al titolo, etichette dei valori, etichetta d'asse troncata.
+- Eseguibile: costruito con PyInstaller **su Linux** (stessa spec) per validare import
+  dinamici, dati inclusi e dispatch CLI/GUI: CLI completa (simulate, analyze, status, report,
+  run) e finestra funzionanti dall'eseguibile congelato (63 MB).
+
+### 6.4 Rischi residui
+
+| # | Priorità | Rischio | Raccomandazione |
+|---|---|---|---|
+| R11 | **Alta** | Il `.exe` Windows non è stato costruito né provato qui (nessun Windows): Tk su Windows, richiesta UAC (`ShellExecute runas`), importazione dell'XML di `schtasks`, nascondere la console | eseguire il workflow "Build exe" e provare su Windows 11 (elenco in `docs/GUIDA_UTENTE.md` §6A); `TODO` in `cli._tasks`/`task_definitions` |
+| R12 | Media | Eseguibile non firmato: SmartScreen e alcuni antivirus possono segnalare gli eseguibili PyInstaller (falsi positivi) | firma Authenticode (certificato) o distribuzione tramite installer firmato; pubblicare hash e firma Sigstore; UPX disattivato |
+| R13 | Media | La GUI scrive `hwdrift.yaml` modificabile dall'utente: un collector elevato che lo leggesse riaprirebbe THREAT_MODEL T1 | il collector elevato usa un file in cartella protetta con `--config` (avviso nella GUI e nel rifiuto della CLI) |
+| R14 | Bassa | I grafici della GUI non hanno tabella dati equivalente né navigazione da tastiera del canvas (il report HTML sì) | accettato per la v1; la GUI non sostituisce il report accessibile |
+| R15 | Bassa | Il collector elevato e la GUI devono condividere la cartella dati (`LOCALAPPDATA` dello stesso utente); con UAC con credenziali di un altro amministratore le cartelle differiscono | passare `--db`/`HWDRIFT_HOME` espliciti |

@@ -34,6 +34,7 @@ windows = [
 nvml = ["nvidia-ml-py>=12.535"]
 parquet = ["pyarrow>=15"]
 dev = [
+  "pyinstaller>=6.6",
   "numpy>=1.26",
   "scipy>=1.11",
   "pytest>=8",
@@ -46,6 +47,9 @@ dev = [
 
 [project.scripts]
 hwdrift = "hwdrift.cli:main"
+
+[project.gui-scripts]
+hwdrift-gui = "hwdrift.gui.launcher:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/hwdrift"]
