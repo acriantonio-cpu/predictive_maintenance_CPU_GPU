@@ -1,0 +1,45 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Run (simulator)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "hwdrift",
+      "args": ["--db", "${workspaceFolder}/.dev/sim.sqlite", "run", "--simulate", "healthy"],
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Run (hardware) — VS Code avviato come amministratore",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "hwdrift",
+      "args": ["run"],
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Simulate 30 giorni (polvere)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "hwdrift",
+      "args": ["--db", "${workspaceFolder}/.dev/dust.sqlite", "simulate", "dust", "--days", "30"],
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Analyze (database di esempio)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "hwdrift",
+      "args": ["--db", "${workspaceFolder}/.dev/dust.sqlite", "analyze"],
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Pytest (senza hardware)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "pytest",
+      "args": ["-m", "not hardware"],
+      "console": "integratedTerminal"
+    }
+  ]
+}

@@ -1,0 +1,56 @@
+# SPDX-License-Identifier: Apache-2.0
+name: CI
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+        python: ["3.12"]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Dipendenze bloccate (hash)
+        run: |
+          python -m pip install --upgrade pip
+          pip install --require-hashes -r requirements/dev.lock
+          pip install --no-deps -e .
+      - name: Lint
+        run: ruff check src tests
+      - name: Type check
+        run: pyright
+      - name: Test (solo simulatore, niente hardware)
+        run: pytest -m "not hardware" --cov=hwdrift --cov-report=term
+      - name: Il nucleo non importa moduli Windows; il collector non importa numpy
+        run: pytest tests/unit/test_portability.py -q
+      - name: Selftest di overhead (simulatore)
+        run: |
+          python -c "import yaml; open('ci.yaml','w').write(yaml.safe_dump({'sources': {'simulator': {'enabled': True}}}))"
+          hwdrift --config ci.yaml selftest --seconds 20
+      - name: Validazione schemi JSON e export
+        run: |
+          hwdrift --db ci.sqlite simulate healthy --days 8
+          hwdrift --db ci.sqlite analyze --no-report
+          hwdrift --db ci.sqlite export --format jsonl --out ci-export
+          python scripts/validate_export.py ci-export
+  licenses:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: |
+          pip install --require-hashes -r requirements/dev.lock
+          pip install pip-licenses==5.0.0
+          pip-licenses --fail-on="GPL;AGPL;LGPL-3.0;SSPL" --partial-match --with-urls
+      - name: Intestazioni SPDX
+        run: python scripts/check_spdx.py

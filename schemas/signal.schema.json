@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/acriantonio-cpu/predictive_maintenance_CPU_GPU/schemas/signal.schema.json",
+  "title": "HWDrift segnale di una carta di controllo",
+  "type": "object",
+  "required": ["schema", "machine_id", "indicator", "regime", "level", "segment", "ts", "rule", "side", "label"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {"const": "hwdrift.signal/1.0"},
+    "machine_id": {"type": "string", "pattern": "^[0-9a-f]{32}$"},
+    "indicator": {"type": "string"},
+    "regime": {"type": "string"},
+    "level": {"enum": ["window", "daily"]},
+    "segment": {"type": "integer", "minimum": 1},
+    "ts": {"type": "integer"},
+    "rule": {"enum": ["R1", "R2", "R3", "R4", "MR", "EWMA", "CUSUM", "MK", "C"]},
+    "side": {"enum": ["upper", "lower"]},
+    "value": {"type": ["number", "null"]},
+    "label": {"enum": ["maintenance", "configuration", "provisional"]}
+  }
+}

@@ -1,0 +1,89 @@
+[build-system]
+requires = ["hatchling>=1.24"]
+build-backend = "hatchling.build"
+
+[project]
+name = "hwdrift"
+version = "0.1.0.dev0"
+description = "Monitor locale della deriva termica di CPU e GPU con carte di controllo I-MR (manutenzione predittiva per PC)"
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.11"
+authors = [{ name = "HWDrift contributors" }]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Operating System :: Microsoft :: Windows :: Windows 11",
+  "Topic :: System :: Monitoring",
+]
+# Dipendenze del collector residente: minime, niente numpy/pandas (sezione 2).
+dependencies = [
+  "pyyaml>=6.0",
+  "psutil>=5.9",
+  "typer>=0.12",
+]
+
+[project.optional-dependencies]
+# Worker di analisi (processo separato, priorita' BELOW_NORMAL).
+analysis = ["numpy>=1.26", "scipy>=1.11"]
+# Sorgenti Windows (opzionali: il tool funziona anche senza).
+windows = [
+  "pywin32>=306; sys_platform == 'win32'",
+  "pythonnet>=3.0; sys_platform == 'win32'",
+  "nvidia-ml-py>=12.535",
+]
+nvml = ["nvidia-ml-py>=12.535"]
+parquet = ["pyarrow>=15"]
+dev = [
+  "numpy>=1.26",
+  "scipy>=1.11",
+  "pytest>=8",
+  "pytest-cov>=5",
+  "hypothesis>=6.100",
+  "jsonschema>=4.21",
+  "ruff>=0.5",
+  "pyright>=1.1.370",
+]
+
+[project.scripts]
+hwdrift = "hwdrift.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/hwdrift"]
+
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-m 'not hardware' -q"
+markers = [
+  "hardware: richiede sensori reali (escluso dalla CI)",
+  "slow: test lenti (simulazioni lunghe)",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "S", "RUF"]
+ignore = [
+  "S101",   # assert nei test
+  "S603",   # subprocess con argomenti fissi e validati
+  "S607",   # eseguibili di sistema (wevtutil, powershell, schtasks) risolti dal PATH
+  "RUF001", "RUF002", "RUF003",  # caratteri unicode nei testi italiani
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S", "B", "RUF012", "E501"]
+"src/hwdrift/cli.py" = ["B008"]  # idioma di Typer: le opzioni sono default degli argomenti
+"src/hwdrift/sim/**" = ["S311"]  # simulatore: casualità non crittografica voluta
+"src/hwdrift/collectors/simulator.py" = ["S311"]
+"src/hwdrift/alerts/toast.py" = ["E501"]  # script PowerShell su una riga
+"src/hwdrift/reporting/html_report.py" = ["E501"]  # CSS e HTML inline
+
+[tool.pyright]
+include = ["src"]
+pythonVersion = "3.11"
+typeCheckingMode = "standard"
+reportMissingImports = "warning"
+reportMissingModuleSource = "none"

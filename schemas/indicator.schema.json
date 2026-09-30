@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/acriantonio-cpu/predictive_maintenance_CPU_GPU/schemas/indicator.schema.json",
+  "title": "HWDrift indicatore di salute",
+  "description": "Indicatore normalizzato per il carico, calcolato su una finestra stazionaria (level=window) o come mediana giornaliera (level=daily).",
+  "type": "object",
+  "required": ["schema", "machine_id", "ts", "indicator", "regime", "level", "value"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {"const": "hwdrift.indicator/1.0"},
+    "machine_id": {"type": "string", "pattern": "^[0-9a-f]{32}$"},
+    "ts": {"type": "integer", "minimum": 0},
+    "indicator": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$", "examples": ["rth_cpu", "fan_effort_gpu", "hotspot_delta_gpu", "whea_corrected"]},
+    "regime": {"enum": ["idle", "medium", "high", "all", "load", "day"]},
+    "level": {"enum": ["window", "daily"]},
+    "value": {"type": "number"},
+    "n": {"type": ["integer", "null"], "minimum": 0}
+  }
+}

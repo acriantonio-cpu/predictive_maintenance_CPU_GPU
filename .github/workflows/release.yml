@@ -1,0 +1,33 @@
+# SPDX-License-Identifier: Apache-2.0
+# Build riproducibile, SBOM e firma (keyless, Sigstore) delle release.
+name: Release
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: write
+  id-token: write   # firma keyless con Sigstore
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      SOURCE_DATE_EPOCH: "1767225600"   # timestamp fisso per build riproducibili
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install --require-hashes -r requirements/build.lock
+      - run: python -m build
+      - name: SBOM (CycloneDX)
+        run: |
+          pip install --require-hashes -r requirements/runtime.lock
+          cyclonedx-py environment -o dist/hwdrift-sbom.cdx.json
+      - name: Hash degli artefatti (confrontabili con una seconda build indipendente)
+        run: sha256sum dist/* | tee dist/SHA256SUMS
+      - uses: sigstore/gh-action-sigstore-python@v3.0.0
+        with:
+          inputs: ./dist/*.whl ./dist/*.tar.gz
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*

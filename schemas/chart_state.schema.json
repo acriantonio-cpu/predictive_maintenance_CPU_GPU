@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/acriantonio-cpu/predictive_maintenance_CPU_GPU/schemas/chart_state.schema.json",
+  "title": "HWDrift stato di una carta di controllo (segmento)",
+  "type": "object",
+  "required": ["schema", "machine_id", "indicator", "regime", "level", "segment", "phase", "provisional", "start_ts"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {"const": "hwdrift.chart_state/1.0"},
+    "machine_id": {"type": "string", "pattern": "^[0-9a-f]{32}$"},
+    "indicator": {"type": "string"},
+    "regime": {"type": "string"},
+    "level": {"enum": ["window", "daily"]},
+    "segment": {"type": "integer", "minimum": 1},
+    "phase": {"enum": ["I", "II"]},
+    "provisional": {"type": "boolean"},
+    "start_ts": {"type": "integer"},
+    "locked_ts": {"type": ["integer", "null"]},
+    "closed_ts": {"type": ["integer", "null"]},
+    "center": {"type": ["number", "null"]},
+    "sigma": {"type": ["number", "null"], "minimum": 0},
+    "ucl": {"type": ["number", "null"]},
+    "lcl": {"type": ["number", "null"]},
+    "n_phase1": {"type": "integer", "minimum": 0}
+  }
+}

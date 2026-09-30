@@ -1,0 +1,110 @@
+# SPDX-License-Identifier: Apache-2.0
+# Regole di diagnosi di HWDrift (sezione 8 della specifica).
+#
+# Sono IPOTESI DI RICERCA (RQ3) da validare in Fase 3 e 4, non diagnosi certe.
+# La confidenza è qualitativa (bassa, media, alta), non una probabilità.
+#
+# Condizioni:
+#   {indicator: nome | [nomi], signal: upper | lower | stable | any, regimes: [...]}
+#     upper/lower: segnale attivo su quel lato (in qualsiasi regime)
+#     stable: esiste una carta bloccata e non ha segnali nel periodo di osservazione
+#   {event: config | maintenance, within_hours: N}  (ore dall'evento più recente)
+# I cambi di configurazione non hanno una regola: riaprono la Fase I delle carte
+# coinvolte e producono un avviso che chiede conferma (policy.py).
+# requires: tutte devono valere; supports: alzano la confidenza;
+# contradicts: la abbassano (una controindicazione forte annulla l'ipotesi se
+# `blocking: true`).
+# max_level: livello massimo di allarme che la regola può generare.
+# actions: verifiche ordinate dalla meno alla più invasiva.
+version: 1
+rules:
+  - id: fan_failure
+    title: Ventola o pompa guasta
+    requires:
+      - {indicator: [rth_cpu, rth_gpu], signal: upper}
+      - {indicator: [fan_effort_cpu, fan_effort_gpu], signal: lower, regimes: [medium, high]}
+    supports:
+      - {indicator: [throttle_frac_cpu, throttle_frac_gpu], signal: upper}
+    contradicts:
+      - {event: config, within_hours: 24, blocking: true}
+      # stanza più fredda: la curva ventola rallenta e Rth sale, come per una ventola degradata
+      - {indicator: ref_temp, signal: lower, blocking: true}
+    confidence: {base: medium, with_supports: high}
+    max_level: action
+    actions:
+      - "Controllo immediato: verificare che tutte le ventole (e la pompa, se AIO) girino"
+      - "Sostituire il componente guasto"
+
+  - id: dust_airflow
+    title: Polvere o flusso d'aria ostruito
+    requires:
+      - {indicator: [rth_cpu, rth_gpu], signal: upper}
+      - {indicator: [fan_effort_cpu, fan_effort_gpu], signal: upper, regimes: [medium, high]}
+    supports:
+      - {indicator: case_delta_cpu, signal: upper}
+      - {indicator: [idle_temp_cpu, idle_temp_gpu], signal: upper}
+      - {indicator: [rth_cpu, rth_gpu], signal: upper, distinct_components: 2}
+    contradicts:
+      - {event: config, within_hours: 24, blocking: true}
+      - {indicator: [fan_effort_cpu, fan_effort_gpu], signal: lower, regimes: [medium, high]}
+    confidence: {base: medium, with_supports: high}
+    max_level: action
+    actions:
+      - "Pulire i filtri antipolvere e gli ingressi d'aria"
+      - "Pulire ventole e dissipatori (aria compressa, ventole bloccate)"
+      - "Controllare che il flusso d'aria del case non sia ostruito"
+
+  - id: paste_contact
+    title: Pasta termica secca o contatto del dissipatore degradato
+    requires:
+      - {indicator: [rth_cpu, hotspot_delta_gpu], signal: upper}
+      - {indicator: [fan_effort_cpu, fan_effort_gpu], signal: stable, regimes: [medium, high]}
+    supports:
+      - {indicator: case_delta_cpu, signal: stable}
+      - {indicator: [temp_resid_fan_cpu, temp_resid_fan_gpu], signal: upper}
+    contradicts:
+      - {event: config, within_hours: 24, blocking: true}
+      - {indicator: [fan_effort_cpu, fan_effort_gpu], signal: upper, regimes: [medium, high]}
+      - {indicator: [fan_effort_cpu, fan_effort_gpu], signal: lower, regimes: [medium, high],
+         blocking: true}
+      - {indicator: case_delta_cpu, signal: upper}
+      - {indicator: ref_temp, signal: any}
+    confidence: {base: medium, with_supports: high}
+    max_level: action
+    actions:
+      - "Verificare prima filtri e dissipatori (intervento meno invasivo)"
+      - "Controllare il montaggio del dissipatore (viti, pressione di contatto)"
+      - "Valutare la sostituzione della pasta termica o dei pad"
+
+  - id: power_profile
+    title: Limite di potenza o profilo, non raffreddamento
+    requires:
+      - {indicator: [throttle_frac_cpu, throttle_frac_gpu], signal: upper}
+      - {indicator: [rth_cpu, rth_gpu], signal: stable}
+    confidence: {base: medium}
+    max_level: attention
+    actions:
+      - "Verificare impostazioni di potenza, profili del produttore e limiti impostati"
+
+  - id: environment
+    title: Ambiente (stagione, stanza)
+    requires:
+      - {indicator: ref_temp, signal: any}
+    supports:
+      - {indicator: [fan_effort_cpu, fan_effort_gpu], signal: any}
+      - {indicator: [rth_cpu, rth_gpu], signal: any}
+    confidence: {base: low, with_supports: medium}
+    max_level: info
+    actions:
+      - "Nessuna azione: annotare. Temperature e ventole seguono l'ambiente"
+
+  - id: instability_whea
+    title: Instabilità hardware (overclock, undervolt, RAM, PCIe)
+    requires:
+      - {indicator: [whea_corrected, pcie_replay_gpu, tdr], signal: upper}
+    confidence: {base: medium}
+    max_level: attention
+    actions:
+      - "Verificare overclock/undervolt e profili XMP/EXPO della RAM"
+      - "Aggiornare BIOS e driver, eseguire la diagnostica della memoria"
+      - "Errori fatali = intervenire subito"

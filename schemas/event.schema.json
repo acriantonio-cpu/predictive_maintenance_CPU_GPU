@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/acriantonio-cpu/predictive_maintenance_CPU_GPU/schemas/event.schema.json",
+  "title": "HWDrift evento (manutenzione, configurazione, sistema, errore hardware)",
+  "type": "object",
+  "required": ["schema", "machine_id", "ts", "kind", "source", "detail"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {"const": "hwdrift.event/1.0"},
+    "machine_id": {"type": "string", "pattern": "^[0-9a-f]{32}$"},
+    "ts": {"type": "integer", "minimum": 0},
+    "kind": {
+      "type": "string",
+      "pattern": "^(maintenance|config|system|hw|user)\\.[a-z_]+$",
+      "description": "maintenance.* = etichetta per la validazione; config.* = confondente per le carte"
+    },
+    "source": {"enum": ["user", "auto"]},
+    "detail": {"type": "object"},
+    "note": {"type": "string", "maxLength": 500, "description": "solo nell'export non anonimo"}
+  }
+}

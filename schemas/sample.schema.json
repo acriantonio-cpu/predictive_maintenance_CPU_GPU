@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/acriantonio-cpu/predictive_maintenance_CPU_GPU/schemas/sample.schema.json",
+  "title": "HWDrift sample (aggregato a 1 minuto)",
+  "description": "Telemetria di condizione hardware su canale canonico. Timestamp UTC in millisecondi.",
+  "type": "object",
+  "required": ["schema", "machine_id", "ts", "channel", "aggregation", "n", "valid_frac"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {"const": "hwdrift.sample/1.0"},
+    "machine_id": {"type": "string", "pattern": "^[0-9a-f]{32}$", "description": "ID casuale locale, non derivato dall'hardware"},
+    "ts": {"type": "integer", "minimum": 0, "description": "inizio del minuto, UTC ms"},
+    "channel": {"type": "string", "pattern": "^[a-z][a-z0-9_]*(\\.[a-z0-9_]+)+$"},
+    "aggregation": {"enum": ["1min"]},
+    "median": {"type": ["number", "null"]},
+    "min": {"type": ["number", "null"]},
+    "max": {"type": ["number", "null"]},
+    "n": {"type": "integer", "minimum": 0},
+    "valid_frac": {"type": "number", "minimum": 0, "maximum": 1}
+  }
+}
