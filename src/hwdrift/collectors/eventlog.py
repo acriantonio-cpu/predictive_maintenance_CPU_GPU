@@ -104,7 +104,7 @@ class EventLogCollector(Collector):
         res = subprocess.run(
             ["wevtutil", "qe", "System", f"/q:{_QUERY}", "/f:xml", "/rd:true",
              f"/c:{self.max_events}"],
-            capture_output=True, text=True, timeout=20, check=False,
+            capture_output=True, text=True, timeout=15, check=False,
         )
         if res.returncode != 0:
             raise RuntimeError(f"wevtutil: {res.stderr.strip()[:200]}")

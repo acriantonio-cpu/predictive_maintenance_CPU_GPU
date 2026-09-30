@@ -81,3 +81,14 @@ def test_readonly_connection(tmp_path, conn):
 
     with pytest.raises(sqlite3.OperationalError):
         ro.execute("INSERT INTO meta(key, value) VALUES ('x', 'y')")
+
+
+def test_import_does_not_overwrite_collector_data(conn):
+    from hwdrift.storage.writer import write_minute_aggregates
+
+    w = BatchWriter(conn)
+    w.add([smp("cpu.pkg.temp_c", 50.0, 60_000 + i * 1000) for i in range(60)])
+    w.flush(200_000, final=True)
+    n = write_minute_aggregates(conn, [smp("cpu.pkg.temp_c", 99.0, 60_000)])
+    assert n == 0
+    assert conn.execute("SELECT median FROM agg_1min").fetchone()[0] == 50.0

@@ -145,11 +145,13 @@ class BatchWriter:
         self._last_flush_ms = now_ms
 
 
-def write_minute_aggregates(conn: sqlite3.Connection, samples: Iterable[Sample]) -> int:
+def write_minute_aggregates(conn: sqlite3.Connection, samples: Iterable[Sample],
+                            overwrite: bool = False) -> int:
     """Aggrega e scrive direttamente in ``agg_1min`` (import di log storici).
 
     I log importati possono coprire settimane: si salta ``raw_samples``, che
-    avrebbe comunque ritenzione di 48 ore.
+    avrebbe comunque ritenzione di 48 ore. Per default i minuti già presenti (dati
+    del collector) NON vengono sovrascritti.
     """
     cache: dict[str, int] = {}
     buckets: dict[tuple[int, int], list[tuple[float | None, int]]] = defaultdict(list)
@@ -163,9 +165,10 @@ def write_minute_aggregates(conn: sqlite3.Connection, samples: Iterable[Sample])
         for (cid, minute), vals in buckets.items():
             med, lo, hi, n, frac = aggregate(vals)
             rows.append((minute, cid, med, lo, hi, n, frac))
-        conn.executemany(
-            "INSERT OR REPLACE INTO agg_1min(ts, channel_id, median, min, max, n, valid_frac) "
+        verb = "INSERT OR REPLACE" if overwrite else "INSERT OR IGNORE"
+        cur = conn.executemany(
+            f"{verb} INTO agg_1min(ts, channel_id, median, min, max, n, valid_frac) "
             "VALUES (?, ?, ?, ?, ?, ?, ?)",
             rows,
         )
-    return len(rows)
+    return cur.rowcount if cur.rowcount >= 0 else len(rows)

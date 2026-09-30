@@ -246,12 +246,16 @@ class Worker:
         # giorni con dati (esposizione) per i conteggi e il throttling
         rows += self._daily_minutes(comps, since)
         rows += self._daily_counts(since)
+        # solo giorni completi: la mediana di un giorno in corso cambierebbe ancora e
+        # un segnale su un valore parziale resterebbe registrato
+        today = self.data_now() - self.data_now() % DAY_MS
+        rows = [r for r in rows if r[0] < today]
         with self.conn:
             self.conn.execute("DELETE FROM indicators WHERE level='daily' AND ts >= ?", (since,))
             self.conn.executemany(
                 "INSERT OR REPLACE INTO indicators(ts, indicator, regime, level, value, n) "
                 "VALUES (?,?,?,?,?,?)", rows)
-            set_meta(self.conn, "daily_done", str(self.data_now()))
+            set_meta(self.conn, "daily_done", str(today))
 
     def _on_days(self, since: int) -> dict[int, int]:
         """Minuti di attività per giorno (qualsiasi canale di potenza)."""

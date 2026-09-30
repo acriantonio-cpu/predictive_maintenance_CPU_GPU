@@ -192,6 +192,7 @@ class ReportBuilder:
         if health.failing_collectors:
             extra += f" Sorgenti in errore: {E(', '.join(health.failing_collectors))}."
         extra += "</p>"
+        extra += self.sources()
         if get_meta(self.conn, "alert_budget_exceeded") == "1":
             extra += ('<p class="warn">Budget di allarmi superato: le notifiche di livello azione '
                       "sono sospese. Rivedere soglie e regole.</p>")
@@ -203,6 +204,23 @@ class ReportBuilder:
                       "riferimento affidabile pulire il PC e avviare una nuova Fase I "
                       "(<code>hwdrift baseline start --state clean</code>).</p>")
         return f'<div class="tiles">{html_tiles}</div>{extra}', tiles
+
+    def sources(self) -> str:
+        raw = get_meta(self.conn, "collectors_status")
+        if not raw:
+            return ""
+        try:
+            st = json.loads(raw)
+        except ValueError:
+            return ""
+        rows = []
+        for s in st:
+            state = ("attiva" if s.get("ok") else "sospesa (game-safe)" if s.get("suspended")
+                     else "non disponibile" if not s.get("started") else "in errore")
+            rows.append([s.get("name", ""), state, str(s.get("last_error", ""))[:160]])
+        return ("<details><summary>Sorgenti di dati</summary>"
+                + _table("Stato delle sorgenti all'ultimo salvataggio del collector",
+                         ["Sorgente", "Stato", "Ultimo errore"], rows) + "</details>")
 
     def _diag_level(self, rule_id: str) -> str:
         r = self.conn.execute("SELECT level FROM alerts WHERE key=?", (f"diag:{rule_id}",)

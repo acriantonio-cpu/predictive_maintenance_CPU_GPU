@@ -22,8 +22,10 @@ def test_glitch_and_range():
 def test_impossible_jump_is_glitch_and_does_not_poison_reference():
     qc = QualityChecker()
     assert qc.check(s("cpu.pkg.temp_c", 45.0, 0)).quality == Quality.OK
-    assert qc.check(s("cpu.pkg.temp_c", 95.0, 1)).quality == Quality.GLITCH  # +50 °C in 1 s
-    assert qc.check(s("cpu.pkg.temp_c", 46.0, 2)).quality == Quality.OK
+    assert qc.check(s("cpu.pkg.temp_c", 75.0, 1)).quality == Quality.OK  # spike reale +30 °C
+    assert qc.check(s("cpu.pkg.temp_c", 45.0, 2)).quality == Quality.OK
+    assert qc.check(s("cpu.pkg.temp_c", 110.0, 3)).quality == Quality.GLITCH  # +65 °C in 1 s
+    assert qc.check(s("cpu.pkg.temp_c", 46.0, 4)).quality == Quality.OK
 
 
 def test_frozen_value_detected():

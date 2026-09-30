@@ -35,6 +35,7 @@ def test_override_and_int_to_float(tmp_path):
     "spc:\n  phase1_min_obs: 5\n",
     "regimes:\n  fixed_fractions: [0.8, 0.3]\n",
     "profile:\n  mapping: [1, 2]\n",
+    "profile:\n  mapping: {'/x': 'CPU Package'}\n",
     "- lista\n",
 ])
 def test_invalid(tmp_path, text):

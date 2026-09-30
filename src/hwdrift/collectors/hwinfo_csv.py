@@ -109,11 +109,13 @@ def parse_hwinfo_csv(text: str, mapping: dict[str, str] | None = None,
     mapping = mapping or {}
     tz = timezone(timedelta(hours=tz_offset_h)) if tz_offset_h is not None else None
     csv.field_size_limit(MAX_FIELD * 64)
-    reader = csv.reader(io.StringIO(text))
+    reader = csv.reader(io.StringIO(text, newline=""))
     try:
         header = next(reader)
     except StopIteration:
         return
+    except csv.Error as exc:
+        raise ValueError(f"CSV non valido: {exc}") from exc
     if len(header) < 3 or header[0].strip().lower() != "date":
         raise ValueError("non sembra un log CSV di HWiNFO (manca la colonna Date)")
     cols: list[tuple[int, str, str, str]] = []  # (indice, canale, unità, intestazione)
@@ -132,7 +134,13 @@ def parse_hwinfo_csv(text: str, mapping: dict[str, str] | None = None,
         if ch:
             cols.append((i, ch, unit, h))
     mono0: int | None = None
-    for row in reader:
+    while True:
+        try:
+            row = next(reader)
+        except StopIteration:
+            break
+        except csv.Error as exc:
+            raise ValueError(f"CSV non valido alla riga {reader.line_num}: {exc}") from exc
         if len(row) < 2 or row[0].strip().lower() == "date":
             continue  # righe di intestazione ripetute in coda
         ts = _parse_ts(row[0], row[1], tz)

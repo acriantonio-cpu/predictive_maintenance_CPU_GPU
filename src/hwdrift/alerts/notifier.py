@@ -41,6 +41,15 @@ REASON = {"thermal": "throttling termico", "power_limit": "limite di potenza",
           "fan_stopped": "ventola ferma con temperatura alta"}
 
 
+def _boot_ms() -> int | None:
+    try:
+        import psutil
+
+        return int(psutil.boot_time() * 1000)
+    except Exception:
+        return None
+
+
 def _load(path: Path) -> dict[str, Any]:
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
@@ -67,6 +76,7 @@ class Notifier:
         self.state.setdefault("alerts", {})
         self.show = show
         self.sent: list[tuple[str, str]] = []
+        self.started_ms = now_ms()
 
     def _notify(self, title: str, body: str) -> None:
         self.sent.append((title, body))
@@ -76,8 +86,21 @@ class Notifier:
                 log.info("notifica (non mostrata): %s — %s", title, body)
         log.warning("NOTIFICA: %s — %s", title, body)
 
-    def check(self, now: int | None = None) -> dict[str, Any]:
+    def check(self, now: int | None = None, persist: bool = True) -> dict[str, Any]:
+        """Un ciclo di controllo. Con ``persist=False`` (``hwdrift status``) non invia
+        notifiche e non modifica lo stato, così non sopprime i toast del notificatore."""
         now = now if now is not None else now_ms()
+        if not persist:
+            saved, show, sent = json.loads(json.dumps(self.state)), self.show, list(self.sent)
+            self.show = lambda t, b: True
+            try:
+                conn = connect(self.db, readonly=True)
+                try:
+                    return self._check(conn, now)
+                finally:
+                    conn.close()
+            finally:
+                self.state, self.show, self.sent = saved, show, sent
         try:
             conn = connect(self.db, readonly=True)
         except sqlite3.OperationalError as exc:
@@ -111,10 +134,17 @@ class Notifier:
                     body += f"Picco {peak:.0f}."
                 self._notify(f"HWDrift — {label}", body)
                 self.state["rt"][key] = sev
+        live_rt = {str(r[0]) for r in conn.execute(
+            "SELECT id FROM rt_events WHERE start_ts >= ?", (now - 7 * 86_400_000,))}
+        self.state["rt"] = {k: v for k, v in self.state["rt"].items() if k in live_rt}
         # ---- allarmi di analisi
         budget = get_meta(conn, "alert_budget_exceeded") == "1"
-        for key, level, title, message in conn.execute(
-                "SELECT key, level, title, message FROM alerts WHERE active=1"):
+        active = conn.execute("SELECT key, level, title, message FROM alerts WHERE active=1"
+                              ).fetchall()
+        # un allarme che sparisce e poi ricompare viene notificato di nuovo
+        keys = {r[0] for r in active}
+        self.state["alerts"] = {k: v for k, v in self.state["alerts"].items() if k in keys}
+        for key, level, title, message in active:
             status["alerts"].append({"key": key, "level": level, "title": title})
             if LVL_RANK[level] < 1:
                 continue
@@ -131,7 +161,13 @@ class Notifier:
         elif h.stale_min:
             status["collector"] = f"nessun dato da {h.stale_min:.0f} minuti"
             last = self.state.get("stale_notified")
-            if last is None or last < h.heartbeat_ts:
+            # all'accesso notificatore e collector partono insieme: l'heartbeat è quello
+            # della sessione precedente. Si avvisa solo dopo un periodo di grazia.
+            grace_ms = int(self.cfg["alerts"]["stale_heartbeat_min"] * 60_000)
+            booted = _boot_ms()
+            in_grace = (now - self.started_ms < grace_ms
+                        or (booted is not None and now - booted < 2 * grace_ms))
+            if not in_grace and (last is None or last < h.heartbeat_ts):
                 self._notify("HWDrift — collector fermo",
                              f"Nessun dato da {h.stale_min:.0f} minuti: lo stato di salute non è "
                              "aggiornato. Controllare l'attività pianificata del collector.")

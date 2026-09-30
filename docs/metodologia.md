@@ -66,7 +66,7 @@ Due livelli per ogni indicatore e regime:
 | Livello | Osservazione | σ | Regole |
 |---|---|---|---|
 | `window` | una per finestra stazionaria | **di lungo periodo** (deviazione standard campionaria di Fase I) | solo R1 |
-| `daily` | mediana giornaliera (≥ 2 finestre) | MR̄/1,128, oppure robusta mediana(MR)/0,954 se i dati sono fortemente asimmetrici | R1, R2, R3 (R4 opzionale), MR, EWMA (λ=0,2, L=2,86), CUSUM (k=0,5, h=5), Mann-Kendall (α=0,01) |
+| `daily` | mediana giornaliera (≥ 2 finestre), solo giorni **completi** | MR̄/1,128, oppure robusta mediana(MR)/0,954 se i dati sono fortemente asimmetrici | R1, R2, R3 (R4 opzionale), MR, EWMA (λ=0,2, L=2,86), CUSUM (k=0,5, h=5), Mann-Kendall (α=0,01) |
 
 **Perché σ di lungo periodo sulle finestre.** Sui dati simulati l'autocorrelazione a
 lag 1 delle serie per finestra era 0,3–0,85: finestre della stessa sessione si
@@ -82,8 +82,9 @@ giorni e ≥ 5 sessioni (una sessione = pausa > 2 h o cambio di giorno). Si usa 
 non include il guasto nei limiti. Pulizia dei punti oltre 3σ in massimo 3 iterazioni
 (registrate). Prima della chiusura, con ≥ 12 osservazioni, i punti si confrontano con
 limiti provvisori larghi 1,25× calcolati sui soli punti precedenti: i segnali sono
-etichettati `provisional` e restano informativi. `baseline lock` forza la chiusura con
-limiti provvisori. Serie costanti: σ minima per indicatore (es. 0,01 per la quota di
+etichettati `provisional` e restano informativi. La valutazione provvisoria
+è la stessa sia con analisi incrementali ogni 15 minuti sia con un'analisi che recupera
+settimane in un colpo solo. `baseline lock` forza la chiusura con limiti provvisori. Serie costanti: σ minima per indicatore (es. 0,01 per la quota di
 throttling), altrimenti la carta sarebbe degenerata.
 
 **Segmenti.** Manutenzioni e `baseline start` chiudono il segmento di tutte le carte;

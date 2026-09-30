@@ -202,6 +202,13 @@ def _validate(cfg: dict[str, Any]) -> None:
     bad = set(cfg["spc"]["rules"] + cfg["spc"]["window_rules"]) - {"R1", "R2", "R3", "R4"}
     if bad:
         raise ConfigError(f"spc.rules: regole sconosciute {sorted(bad)}")
+    from .channels import is_valid_channel_name
+
+    bad_map = [f"{k} -> {v}" for k, v in cfg["profile"]["mapping"].items()
+               if v and not is_valid_channel_name(v)]
+    if bad_map:
+        raise ConfigError("profile.mapping: nomi di canale non validi (es. cpu.pkg.temp_c): "
+                          + "; ".join(bad_map[:5]))
     if cfg["sources"]["lhm"]["mode"] not in ("web", "dll"):
         raise ConfigError("sources.lhm.mode: web | dll")
     if cfg["spc"]["phase1_min_obs"] < 20:

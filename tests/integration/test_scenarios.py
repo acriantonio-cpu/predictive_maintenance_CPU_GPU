@@ -126,9 +126,12 @@ def test_throttling_feeds_throttle_indicator_not_rth(run):
     frac = conn.execute("SELECT MAX(value) FROM indicators WHERE indicator='throttle_frac_cpu'"
                         ).fetchone()[0]
     assert frac > 0.1
-    sig = conn.execute("SELECT COUNT(*) FROM signals WHERE chart_id LIKE 'throttle_frac_cpu|%' "
+    # carta solo giornaliera: con 26 giorni la Fase I (25 giorni completi) non è chiusa, quindi
+    # il segnale è "provvisorio" (info); in esercizio il throttling grave lo segnala il
+    # rilevatore in tempo reale
+    sig = conn.execute("SELECT MIN(ts) FROM signals WHERE chart_id LIKE 'throttle_frac_cpu|%' "
                        "AND side='upper'").fetchone()[0]
-    assert sig > 0
+    assert sig is not None and (sig - 1_767_225_600_000) / 86_400_000 >= 14
     assert conn.execute("SELECT COUNT(*) FROM rt_events").fetchone()[0] == 0  # solo offline
 
 
@@ -181,3 +184,12 @@ def test_report_renders_all_views(run):
     assert '<html lang="it">' in html and "<script" not in html
     assert html.count("<svg") == html.count('role="img"')
     assert "Azione" in html
+
+
+def test_daily_indicators_only_for_complete_days(run):
+    """Audit: nessuna mediana giornaliera del giorno in corso (valore ancora parziale)."""
+    conn, _, _ = run("healthy")
+    last = conn.execute("SELECT MAX(ts) FROM agg_1min").fetchone()[0]
+    today = last - last % 86_400_000
+    assert conn.execute("SELECT COUNT(*) FROM indicators WHERE level='daily' AND ts >= ?",
+                        (today,)).fetchone()[0] == 0

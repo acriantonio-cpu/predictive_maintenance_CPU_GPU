@@ -119,6 +119,16 @@ def _lock_index(ts: np.ndarray, level: str, spc: dict[str, Any], min_obs: int) -
     return int(idx[0]) + 1 if idx.size else None
 
 
+def _floored(lim: Limits | None, center: float, floor: float, widen: float) -> Limits:
+    """Limiti con sigma minima (serie quasi costanti, es. throttling sempre a zero)."""
+    if lim is not None and lim.sigma >= floor:
+        return lim
+    c = lim.center if lim is not None else center
+    s = max(floor, 1e-9)
+    return Limits(c, s, s * 1.128, c + 3 * s * widen, c - 3 * s * widen,
+                  3.267 * s * 1.128 * widen, (lim.method if lim else "mr") + "+floor", widen)
+
+
 def _label(ts: int, cfg_times: list[int], window_ms: int) -> str:
     k = bisect.bisect_left(cfg_times, ts - window_ms)
     return "configuration" if k < len(cfg_times) and cfg_times[k] <= ts + window_ms else \
@@ -209,6 +219,7 @@ class ChartEngine:
             if k is None and forced and ts.size >= spc["provisional_min_obs"]:
                 k = int(ts.size)
             if k is not None:
+                self._provisional_signals(seg, ts[:k], vals[:k])
                 self._lock(seg, ts[:k], vals[:k], provisional=(forced and
                                                                _lock_index(ts, level, spc,
                                                                            spc["phase1_min_obs"])
@@ -271,15 +282,10 @@ class ChartEngine:
         if res.limits.sigma == 0.0 and method != "mr":
             res = phase_one(vals, "mr", spc["phase1_max_iterations"], widen)
         if res.limits.sigma < floor or res.limits.sigma == 0.0:
-            # serie quasi sempre costante (es. throttling sempre a zero in Fase I):
-            # sigma minima, altrimenti qualsiasi variazione sarebbe fuori limite o
-            # la carta non esisterebbe
-            sig = max(floor, 1e-9)
-            c = res.limits.center
-            res = type(res)(Limits(c, sig, sig * 1.128, c + 3 * sig * widen,
-                                   c - 3 * sig * widen, 3.267 * sig * 1.128 * widen,
-                                   method + "+floor", widen),
-                            res.kept, res.excluded, res.iterations)
+            # serie quasi sempre costante (es. throttling sempre a zero in Fase I): sigma
+            # minima, altrimenti qualsiasi variazione sarebbe fuori limite
+            res = type(res)(_floored(res.limits, res.limits.center, floor, widen), res.kept,
+                            res.excluded, res.iterations)
         seg.limits = res.limits
         seg.locked_ts = int(ts[-1])
         seg.phase = "II"
@@ -293,29 +299,42 @@ class ChartEngine:
 
     def _provisional(self, seg: Segment, ts: np.ndarray, vals: np.ndarray) -> None:
         spc = self.spc
-        n0 = spc["provisional_min_obs"]
         seg.phase = "I"
         seg.provisional = True
-        if ts.size < n0:
+        if ts.size < spc["provisional_min_obs"]:
             seg.limits = None
             seg.params["status"] = "insufficient"
             return
         seg.params["status"] = "provisional"
         widen = spc["provisional_widen"]
-        if np.std(vals) > 0:
-            seg.limits = imr_limits(vals, "mr", widen)
+        floor = SIGMA_FLOOR.get(split(seg.chart_id.split("|")[0])[0], 0.0)
+        if np.std(vals) > 0 or floor > 0:
+            seg.limits = _floored(imr_limits(vals, "mr", widen) if np.std(vals) > 0 else None,
+                                  float(vals.mean()), floor, widen)
+        self._provisional_signals(seg, ts, vals)
+
+    def _provisional_signals(self, seg: Segment, ts: np.ndarray, vals: np.ndarray) -> None:
+        """Durante la Fase I ogni punto si confronta con limiti larghi calcolati sui soli
+        punti precedenti: segnali ``provisional`` (info). Stesso risultato sia con analisi
+        incrementali sia con un'analisi che recupera settimane in un colpo solo."""
+        spc = self.spc
+        n0 = spc["provisional_min_obs"]
+        widen = spc["provisional_widen"]
+        floor = SIGMA_FLOOR.get(split(seg.chart_id.split("|")[0])[0], 0.0)
         checked = int(seg.params.get("prov_checked_ts", 0))
         for i in range(n0, ts.size):
             if ts[i] <= checked:
                 continue
             prior = vals[:i]
-            if np.std(prior) == 0:
+            if np.std(prior) == 0 and floor == 0.0:
                 continue
-            lim = imr_limits(prior, "mr", widen)
+            lim = _floored(imr_limits(prior, "mr", widen) if np.std(prior) > 0 else None,
+                           float(prior.mean()), floor, widen)
             if vals[i] > lim.ucl or vals[i] < lim.lcl:
                 self._signal(seg, int(ts[i]), "R1", "upper" if vals[i] > lim.ucl else "lower",
                              float(vals[i]), [int(ts[i])], label="provisional")
-        seg.params["prov_checked_ts"] = int(ts[-1])
+        if ts.size:
+            seg.params["prov_checked_ts"] = int(ts[-1])
 
     # ----------------------------------------------------------------- counts
     def _update_count(self, seg: Segment, ts: np.ndarray, vals: np.ndarray) -> None:

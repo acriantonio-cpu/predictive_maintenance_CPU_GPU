@@ -88,6 +88,9 @@ def test_notifier_dedup_escalation_and_readonly(conn, tmp_path, cfg):
     n2 = Notifier(db, tmp_path, cfg)
     n2.check(now + 3000)
     assert _titles(n2) == []
+    # potatura (audit A19): episodi più vecchi di 7 giorni escono dallo stato
+    n2.check(now + 8 * 86_400_000)
+    assert n2.state["rt"] == {}
 
 
 def test_notifier_toast_callback(conn, tmp_path, cfg):
@@ -100,10 +103,14 @@ def test_notifier_toast_callback(conn, tmp_path, cfg):
     assert shown and "ventola ferma" in shown[0]
 
 
-def test_notifier_stale_collector_and_power_info(conn, tmp_path, cfg):
+def test_notifier_stale_collector_and_power_info(conn, tmp_path, cfg, monkeypatch):
+    from hwdrift.alerts import notifier as nmod
+
+    monkeypatch.setattr(nmod, "_boot_ms", lambda: None)
     db = Path(conn.execute("PRAGMA database_list").fetchone()[2])
     n = Notifier(db, tmp_path, cfg)
     now = 1_767_225_600_000
+    n.started_ms = now - 60 * 60_000
     with conn:
         set_meta(conn, "heartbeat_ts", str(now - 30 * 60_000))
     BatchWriter(conn).open_rt_event(now, "gpu0", "power_limit", "info", 200.0, {})
@@ -126,3 +133,44 @@ def test_notifier_budget_suppresses_action(conn, tmp_path, cfg):
     n.check(now)
     assert any("Errore fatale" in s for s in _titles(n))
     assert not any("Polvere" in s for s in _titles(n))
+
+
+def test_stale_grace_after_login(conn, tmp_path, cfg, monkeypatch):
+    """Audit: all'accesso l'heartbeat è della sessione precedente, niente falso allarme."""
+    from hwdrift.alerts import notifier as nmod
+
+    now = 1_767_225_600_000
+    monkeypatch.setattr(nmod, "_boot_ms", lambda: now - 60_000)  # PC acceso da 1 minuto
+    db = Path(conn.execute("PRAGMA database_list").fetchone()[2])
+    with conn:
+        set_meta(conn, "heartbeat_ts", str(now - 12 * 3_600_000))
+    n = Notifier(db, tmp_path, cfg)
+    n.started_ms = now - 30_000
+    n.check(now)
+    assert not any("collector fermo" in s for s in _titles(n))
+    monkeypatch.setattr(nmod, "_boot_ms", lambda: now - 3_600_000)
+    n.started_ms = now - 3_600_000
+    n.check(now + 1000)
+    assert any("collector fermo" in s for s in _titles(n))
+
+
+def test_status_does_not_consume_notifications(conn, tmp_path, cfg):
+    """Audit: 'hwdrift status' non deve segnare come inviate le notifiche."""
+    db = Path(conn.execute("PRAGMA database_list").fetchone()[2])
+    BatchWriter(conn).open_rt_event(1, "cpu", "thermal", "error", 99.0, {})
+    with conn:
+        set_meta(conn, "heartbeat_ts", "1000")
+    n = Notifier(db, tmp_path, cfg)
+    st = n.check(2000, persist=False)
+    assert st["ongoing"] and n.sent == [] and not (tmp_path / "notifier_state.json").exists()
+    n2 = Notifier(db, tmp_path, cfg)
+    n2.check(3000)
+    assert any("throttling" in s for s in _titles(n2))
+
+
+def test_csv_non_anonymous_keeps_note_column(filled, tmp_path):
+    ex.export_csv(filled, tmp_path / "c", anonymize=False)
+    text = (tmp_path / "c" / "events.csv").read_text(encoding="utf-8")
+    assert text.splitlines()[0].endswith("note") and "Mario" in text
+    ex.export_csv(filled, tmp_path / "a", anonymize=True)
+    assert "note" not in (tmp_path / "a" / "events.csv").read_text(encoding="utf-8")

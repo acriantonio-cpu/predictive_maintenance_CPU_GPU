@@ -24,7 +24,9 @@ class ChannelSpec:
     description: str = ""
 
 
-_TEMP = {"unit": "°C", "lo": -10.0, "hi": 125.0, "max_rate": 25.0,
+# max_rate: il package CPU può salire di 20-30 °C in meno di un secondo all'avvio di un
+# carico (Tctl dei Ryzen, spike Intel): 50 °C/s scarta solo salti fisicamente impossibili
+_TEMP = {"unit": "°C", "lo": -10.0, "hi": 125.0, "max_rate": 50.0,
          "glitch_values": (0.0, 255.0, -128.0, 127.0), "freeze_s": 900.0}
 
 # Canali canonici fissi. I canali con indice (gpuN, ssdN, chassis.fanN) si

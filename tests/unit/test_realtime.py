@@ -91,3 +91,11 @@ def test_fan_stopped():
         det2.update({"gpu0.fan_rpm": 0.0, "gpu0.temp_edge_c": 40.0, "gpu0.util_pct": 2.0},
                     float(t), t * 1000)
     assert ev2 == []
+
+
+def test_cpu_at_tjmax_without_clock_data():
+    """Audit: con solo LHM (nessun clock effettivo) il throttling CPU va rilevato lo stesso."""
+    det, ev = make()
+    for t in range(20):
+        det.update({"cpu.pkg.temp_c": 99.5, "cpu.load_pct": 95.0}, float(t), t * 1000)
+    assert any(e[0] == "open" and e[2] == "thermal" for e in ev)

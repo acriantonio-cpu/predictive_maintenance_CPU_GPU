@@ -55,9 +55,10 @@ Il percorso di un dato, passo per passo:
    i valori impossibili (0, 255, salti di 50 °C in un secondo), fuori scala o
    **congelati** (identici per 15 minuti) vengono marcati ed esclusi dai calcoli.
 2. **Errori immediati.** Se la GPU segnala throttling termico, se la CPU rallenta
-   sotto carico vicino al limite di temperatura o se una ventola è ferma con
-   temperatura alta, dopo pochi secondi (debounce) nasce un **episodio** e arriva un
-   toast. Non si aspetta l'analisi statistica.
+   sotto carico vicino al limite di temperatura (o raggiunge Tjmax, quando il clock
+   effettivo non è disponibile) o se una ventola è ferma con temperatura alta, dopo
+   pochi secondi (debounce) nasce un **episodio** e arriva un toast. Non si aspetta
+   l'analisi statistica.
 3. **Scrittura.** Ogni 60 s il collector scrive in un'unica transazione i campioni
    grezzi (tenuti 48 ore) e le **mediane al minuto** (tenute per sempre).
 4. **Finestre stazionarie.** Il worker cerca intervalli di 5 minuti in cui il carico è
@@ -140,7 +141,9 @@ configurazioni **Run (simulator)**, **Run (hardware)**, **Simulate 30 giorni**,
 ## 4. Prova senza hardware (simulatore)
 
 Il modo più rapido per capire il tool: si generano settimane di dati sintetici in
-pochi secondi, con un guasto iniettato.
+pochi secondi, con un guasto iniettato. I dati simulati **non finiscono mai** nel
+database reale: senza `--db` vanno in `simulate-<scenario>.sqlite` (o
+`sim-<scenario>.sqlite` per `run --simulate`) nella cartella dati.
 
 ```powershell
 hwdrift simulate --list                         # scenari disponibili
@@ -221,12 +224,15 @@ hwdrift baseline start --state clean   # oppure --state unknown se non hai pulit
 hwdrift run                            # in un terminale amministratore; Ctrl+C per fermare
 ```
 
-### Passo 6 — Usa il PC normalmente per almeno 5 giorni
+### Passo 6 — Usa il PC normalmente per almeno 5 giorni (e un mese per le carte giornaliere)
 
 La Fase I si chiude da sola quando ogni carta ha almeno 25 osservazioni, in 5 giorni
 diversi e 5 sessioni. Prima di allora le carte sono **provvisorie** e il report dice
 "baseline in costruzione": l'assenza di segnali **non** significa buona salute.
-I regimi poco usati (es. carico alto su un PC da ufficio) possono restare senza carta:
+Le carte **giornaliere** (mediana del giorno, con regole di sequenza, EWMA, CUSUM e
+trend) hanno bisogno di 25 giorni completi: nel primo mese le derive si vedono sulle
+carte per finestra. I regimi poco usati (es. carico alto su un PC da ufficio) possono
+restare senza carta:
 il report lo dichiara come **copertura insufficiente**; vedi il §10 per rimediare.
 
 ### Passo 7 — Analizza e leggi il report
@@ -413,6 +419,8 @@ configurazione).
 | Stutter nei giochi o conflitti con anti-cheat | Aggiungi il processo a `game_safe.processes`; usa `mode: web` |
 | Report: "Baseline in costruzione" dopo giorni | Controlla la sezione *Copertura*: il regime non viene visitato → health-check |
 | Report: "Dati non aggiornati" | Il collector è fermo: `hwdrift status`, controlla l'attività pianificata |
+| Una sorgente manca dagli indicatori | `hwdrift status` e la sezione *Sorgenti di dati* del report mostrano quali sorgenti non sono partite e perché |
+| `Rifiutato: con privilegi elevati la configurazione va indicata esplicitamente` | Con il terminale amministratore passa il file con `--config` (misura di sicurezza) |
 | Toast non visibili | Focus Assist o gioco a schermo intero: lo stato resta nel report e in `status.json` |
 | Troppi allarmi | Il budget mensile li sospende; rivedi `spc`/`alerts` e le regole in `diagnosis/rules/default.yaml` |
 | `Errore di configurazione: chiave sconosciuta` | Refuso in `hwdrift.yaml`: il messaggio indica la chiave |

@@ -232,7 +232,9 @@ class Runner:
         if self._last_wall is not None and self._last_mono is not None:
             wall_dt = (ts - self._last_wall) / 1000.0
             mono_dt = mono - self._last_mono
-            if wall_dt - mono_dt > 30 or wall_dt > max(30.0, 10 * self.interval):
+            # su Windows time.monotonic include il tempo di sospensione: serve anche la
+            # soglia assoluta, alta abbastanza da non scattare per una lettura lenta
+            if wall_dt - mono_dt > 30 or wall_dt > max(90.0, 10 * self.interval):
                 self.writer.add_event(EventRecord(self._last_wall, "system.gap",
                                                   detail={"end_ts": ts, "reason": "sospensione"}))
                 if self.detector is not None:
@@ -284,6 +286,7 @@ class Runner:
         self.writer.add(batch)
         if self.writer.due(ts):
             self.writer.flush(ts)
+            self._save_status()
         self.ticks += 1
 
     def run(self, max_ticks: int | None = None, install_signals: bool = True) -> None:
@@ -310,6 +313,7 @@ class Runner:
             self.detector.close_all()
         try:
             self.writer.flush(self.clock.wall_ms(), final=True)
+            self._save_status()
         finally:
             for st in self.states:
                 if st.started:
@@ -317,6 +321,14 @@ class Runner:
                         st.collector.close()
                     except Exception:
                         log.exception("chiusura collector %s", st.collector.name)
+
+    def _save_status(self) -> None:
+        """Stato delle sorgenti (anche quelle mai partite, es. LHM non avviato)."""
+        try:
+            with self.conn:
+                set_meta(self.conn, "collectors_status", json.dumps(self.status()))
+        except sqlite3.Error:
+            log.debug("stato delle sorgenti non salvato", exc_info=True)
 
     def status(self) -> list[dict[str, Any]]:
         return [{"name": s.collector.name, "started": s.started, "ok": s.ok,

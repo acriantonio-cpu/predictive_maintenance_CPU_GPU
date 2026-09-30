@@ -81,6 +81,17 @@ def iter_records(conn: sqlite3.Connection, kind: str, anonymize: bool = True,
 
 
 KINDS = ("sample", "indicator", "event", "chart_state", "signal")
+CSV_FIELDS: dict[str, list[str]] = {
+    "sample": ["schema", "machine_id", "ts", "channel", "aggregation", "median", "min", "max",
+               "n", "valid_frac"],
+    "indicator": ["schema", "machine_id", "ts", "indicator", "regime", "level", "value", "n"],
+    "event": ["schema", "machine_id", "ts", "kind", "source", "detail", "note"],
+    "chart_state": ["schema", "machine_id", "indicator", "regime", "level", "segment", "phase",
+                    "provisional", "start_ts", "locked_ts", "closed_ts", "center", "sigma",
+                    "ucl", "lcl", "n_phase1"],
+    "signal": ["schema", "machine_id", "indicator", "regime", "level", "segment", "ts", "rule",
+               "side", "value", "label"],
+}
 
 
 def export_jsonl(conn: sqlite3.Connection, out_dir: Path, anonymize: bool = True,
@@ -102,14 +113,13 @@ def export_csv(conn: sqlite3.Connection, out_dir: Path, anonymize: bool = True,
     paths = []
     for kind in KINDS:
         p = out_dir / f"{kind}s.csv"
-        writer = None
+        fields = [f for f in CSV_FIELDS[kind] if not (anonymize and f == "note")]
         with p.open("w", newline="", encoding="utf-8") as fh:
+            writer = csv.DictWriter(fh, fieldnames=fields, extrasaction="ignore")
+            writer.writeheader()
             for rec in iter_records(conn, kind, anonymize, since):
-                rec = {k: (json.dumps(v) if isinstance(v, dict) else v) for k, v in rec.items()}
-                if writer is None:
-                    writer = csv.DictWriter(fh, fieldnames=list(rec), extrasaction="ignore")
-                    writer.writeheader()
-                writer.writerow(rec)
+                writer.writerow({k: (json.dumps(v) if isinstance(v, dict) else v)
+                                 for k, v in rec.items()})
         paths.append(p)
     return paths
 

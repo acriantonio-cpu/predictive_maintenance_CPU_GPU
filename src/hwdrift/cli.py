@@ -40,6 +40,8 @@ log = logging.getLogger("hwdrift")
 class State:
     cfg: dict[str, Any]
     db: Path
+    db_explicit: bool = False
+    config_explicit: bool = False
 
 
 state = State()
@@ -75,6 +77,8 @@ def main_callback(
         typer.echo(f"Errore di configurazione: {exc}", err=True)
         raise typer.Exit(2) from exc
     state.db = db if db is not None else default_db_path(state.cfg)
+    state.db_explicit = db is not None
+    state.config_explicit = config is not None
     _setup_logging(verbose, data_dir(state.cfg) / "hwdrift.log" if db is None else None)
 
 
@@ -88,6 +92,30 @@ def _open(readonly: bool = False):
             raise typer.Exit(1)
         return connect(state.db, readonly=True)
     return open_db(state.db)
+
+
+def is_elevated() -> bool:
+    try:
+        if sys.platform == "win32":
+            import ctypes
+
+            return bool(ctypes.windll.shell32.IsUserAnAdmin())  # type: ignore[attr-defined]
+        import os
+
+        return os.geteuid() == 0
+    except Exception:
+        return False
+
+
+def _refuse_if_insecure_config(cfg: dict[str, Any]) -> None:
+    """Un collector elevato non deve eseguire configurazioni trovate nella cartella
+    corrente (potrebbero cambiare gli eseguibili esterni usati): THREAT_MODEL T1."""
+    src = cfg.get("_source")
+    if src and is_elevated() and Path(src).resolve().parent == Path.cwd().resolve() \
+            and Path(src).name == "hwdrift.yaml" and not state.config_explicit:
+        typer.echo("Rifiutato: con privilegi elevati la configurazione va indicata "
+                   "esplicitamente con --config (non presa dalla cartella corrente).", err=True)
+        raise typer.Exit(2)
 
 
 def _parse_when(text: str | None) -> int | None:
@@ -174,6 +202,11 @@ def run(
         cfg["sources"]["simulator"].update(enabled=True, scenario=simulate)
         if fault_after is not None:
             cfg["sources"]["simulator"]["fault_after_s"] = fault_after
+        if not state.db_explicit:
+            # i dati simulati non devono mai finire nel database della macchina reale
+            state.db = data_dir(cfg) / f"sim-{simulate}.sqlite"
+    elif not state.db_explicit:
+        _refuse_if_insecure_config(cfg)
     if interval is not None:
         cfg["sampling"]["interval_s"] = interval
     conn = open_db(state.db)
@@ -467,6 +500,8 @@ def simulate(
         for k, v in DESCRIPTIONS.items():
             typer.echo(f"{k:<16} {v}")
         return
+    if not state.db_explicit:
+        state.db = data_dir(state.cfg) / f"simulate-{scenario}.sqlite"
     conn = _open()
     if conn.execute("SELECT COUNT(*) FROM agg_1min").fetchone()[0]:
         typer.echo("Il database contiene già dati: usare --db con un file nuovo per la "
@@ -494,9 +529,17 @@ def status() -> None:
     """Stato sintetico: collector, episodi in corso, allarmi attivi."""
     from .alerts.notifier import Notifier
 
-    n = Notifier(state.db, data_dir(state.cfg), state.cfg, show=lambda t, b: True)
-    s = n.check()
+    n = Notifier(state.db, data_dir(state.cfg), state.cfg)
+    s = n.check(persist=False)
     typer.echo(f"Collector: {s.get('collector')}")
+    from .storage.schema import get_meta
+
+    conn = _open(readonly=True)
+    raw = get_meta(conn, "collectors_status")
+    for src in json.loads(raw) if raw else []:
+        if not src.get("ok"):
+            why = src.get("last_error") or ("sospesa" if src.get("suspended") else "")
+            typer.echo(f"  sorgente {src['name']}: non attiva {why}".rstrip())
     for o in s.get("ongoing", []):
         typer.echo(f"IN CORSO: {o['component']} {o['reason']} ({o['severity']})")
     for a in s.get("alerts", []):
@@ -518,13 +561,15 @@ def init_config(path: Path = typer.Option(Path("hwdrift.yaml"), help="file da cr
 
 
 def _tasks(exe: str) -> list[tuple[str, list[str]]]:
+    """``exe`` è già un comando quotato (es. ``"C:\\...\\hwdrift.exe"``).
+    TODO(M5): verificare su Windows 11 il quoting di /TR con percorsi con spazi."""
     return [
         ("HWDrift Collector", ["schtasks", "/Create", "/F", "/TN", r"HWDrift\Collector",
-                               "/SC", "ONLOGON", "/RL", "HIGHEST", "/TR", f'"{exe}" run']),
+                               "/SC", "ONLOGON", "/RL", "HIGHEST", "/TR", f"{exe} run"]),
         ("HWDrift Analisi", ["schtasks", "/Create", "/F", "/TN", r"HWDrift\Analyze",
-                             "/SC", "MINUTE", "/MO", "15", "/TR", f'"{exe}" analyze']),
+                             "/SC", "MINUTE", "/MO", "15", "/TR", f"{exe} analyze"]),
         ("HWDrift Notificatore", ["schtasks", "/Create", "/F", "/TN", r"HWDrift\Notify",
-                                  "/SC", "ONLOGON", "/TR", f'"{exe}" notify']),
+                                  "/SC", "ONLOGON", "/TR", f"{exe} notify"]),
     ]
 
 
@@ -536,7 +581,8 @@ def schedule_install(apply: bool = typer.Option(False, help="crea davvero le att
     import shutil
     import subprocess
 
-    exe = shutil.which("hwdrift") or f"{sys.executable} -m hwdrift"
+    found = shutil.which("hwdrift")
+    exe = f'"{found}"' if found else f'"{sys.executable}" -m hwdrift'
     for name, cmd in _tasks(exe):
         typer.echo(f"{name}: {' '.join(cmd)}")
         if apply:

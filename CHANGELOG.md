@@ -28,5 +28,9 @@ Formato: [Keep a Changelog](https://keepachangelog.com/it/1.1.0/); versionamento
   rilevamento semi-automatico delle pulizie, regole di diagnosi YAML, CLI completa.
 - M5 (parziale): report HTML autonomo e accessibile, attività pianificate, selftest di
   overhead, export CSV/JSONL/Parquet/Prometheus/OTLP con schema aperto versionato.
+- Audit del codice ([docs/AUDIT.md](docs/AUDIT.md)): 21 correzioni, tra cui simulazione mai
+  nel database reale, `status` che non consuma le notifiche, throttling CPU senza clock
+  effettivo, periodo di grazia per "collector fermo", solo giorni completi nelle carte
+  giornaliere, stato delle sorgenti visibile, fuzzing dei parser.
 - Documentazione: guida passo passo, metodologia, protocollo di validazione, matrice dei
   sensori, modello di minaccia, sicurezza, governance, uso dell'AI.

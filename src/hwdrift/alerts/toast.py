@@ -42,7 +42,7 @@ def show(title: str, body: str) -> bool:
             return r.returncode == 0
         exe = shutil.which("notify-send")
         if exe:
-            r = subprocess.run([exe, "--app-name=HWDrift", title, body], capture_output=True,
+            r = subprocess.run([exe, "--app-name=HWDrift", "--", title, body], capture_output=True,
                                timeout=10, check=False)
             return r.returncode == 0
     except (OSError, subprocess.SubprocessError):

@@ -153,3 +153,24 @@ def test_healthcheck_live_snapshot(cfg, conn, tmp_path):
     data = json.loads(live.read_text())
     assert "cpu.pkg.temp_c" in data["values"]
     assert read_live(live, "cpu.pkg.temp_c", max_age_s=1e12) is not None
+
+
+def test_unavailable_source_is_recorded(cfg, conn):
+    """Audit A6: una sorgente mai partita resta visibile nello stato salvato."""
+    import json
+
+    from hwdrift.collectors.base import CollectorUnavailable
+    from hwdrift.storage.schema import get_meta
+
+    class Missing(Dummy):
+        name = "lhm"
+
+        def start(self):
+            raise CollectorUnavailable("server web di LHM non raggiungibile")
+
+    clock = FakeClock()
+    r = Runner(cfg, conn, [Missing(), Dummy()], clock)
+    r.run(max_ticks=70, install_signals=False)
+    st = {s["name"]: s for s in json.loads(get_meta(conn, "collectors_status"))}
+    assert not st["lhm"]["started"] and "LHM" in st["lhm"]["last_error"]
+    assert st["dummy"]["ok"]

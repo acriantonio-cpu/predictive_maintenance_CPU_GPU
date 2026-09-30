@@ -136,7 +136,11 @@ class RealtimeDetector:
         clock_low = (clk is not None and nominal and load is not None
                      and load >= self.cfg.cpu_load_min_pct
                      and clk < self.cfg.cpu_clock_ratio * nominal)
-        if thermal_flag or (clock_low and near_limit):
+        # senza clock effettivo (es. solo LHM) la CPU al limite termico sotto carico è
+        # comunque in throttling: le CPU moderne rallentano a Tjmax
+        at_limit = (t is not None and t >= self.cfg.tjmax_c - 1.0
+                    and (load is None or load >= self.cfg.cpu_load_min_pct / 2))
+        if thermal_flag or (clock_low and near_limit) or at_limit:
             active["cpu.thermal"] = ("cpu", "thermal", self._thermal_severity(high, high_min), t)
         elif values.get("cpu.throttle_power", 0.0) >= 0.5:
             active["cpu.power"] = ("cpu", "power_limit", "info", values.get("cpu.pkg.power_w"))

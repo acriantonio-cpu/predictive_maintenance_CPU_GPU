@@ -95,3 +95,25 @@ def test_run_with_simulator_and_schedule_dry_run(env):
     assert "ONLOGON" in invoke("schedule", "install").output
     r = invoke("healthcheck")
     assert r.exit_code == 1 and "--yes" in r.output
+
+
+def test_simulation_never_touches_real_database(env):
+    """Audit: senza --db i dati simulati vanno in un file separato."""
+    r = invoke("simulate", "healthy", "--days", "1")
+    assert r.exit_code == 0, r.output
+    home = env / "home"
+    assert (home / "simulate-healthy.sqlite").exists()
+    assert not (home / "hwdrift.sqlite").exists()
+    r = invoke("run", "--simulate", "healthy", "--interval", "0.2", "--max-seconds", "1")
+    assert r.exit_code == 0 and (home / "sim-healthy.sqlite").exists()
+    assert not (home / "hwdrift.sqlite").exists()
+
+
+def test_elevated_collector_refuses_cwd_config(env, monkeypatch):
+    """Audit A8: con privilegi elevati niente configurazione implicita dalla cartella corrente."""
+    import hwdrift.cli as cli
+
+    (env / "hwdrift.yaml").write_text("sampling:\n  interval_s: 1\n", encoding="utf-8")
+    monkeypatch.setattr(cli, "is_elevated", lambda: True)
+    r = CliRunner().invoke(app, ["run", "--max-seconds", "1"])
+    assert r.exit_code == 2 and "--config" in r.output
